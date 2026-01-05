@@ -34,34 +34,13 @@ jobs:
         restore-keys: |
           ${{ runner.os }}-uv-
         
-    - name: Install system dependencies (Ubuntu)
-      if: matrix.os == 'ubuntu-latest'
-      run: |
-        sudo apt-get update -qy
-        sudo apt-get install -qy ffmpeg
-        
-    - name: Install system dependencies (Windows)
-      if: matrix.os == 'windows-latest'
-      run: |
-        # FFmpeg installation for Windows (using chocolatey)
-        choco install ffmpeg -y
-        
     - name: Install Python dependencies
       run: |
-        uv pip install --system -e .[dev,tensorboard,spaces] --prerelease=allow
+        uv pip install --system -e .[dev] --prerelease=allow
         uv pip install --system pytest --prerelease=allow
-
-    - name: Install Playwright
-      run: |
-        playwright install
         
-    - name: Run backend unit tests
+    - name: Run tests
       run: |
-        pytest --deselect=tests/ui 
-
-    - name: Run ui/ux interaction tests
-      if: matrix.os == 'ubuntu-latest'
-      run: |
-        pytest tests/ui 
+        pytest 
 
     

@@ -1,6 +1,6 @@
 {
 	"$schema": "https://unpkg.com/@changesets/config@2.3.0/schema.json",
-	"changelog": ["./changeset.cjs", { "repo": "gradio-app/trackio" }],
+	"changelog": ["./changeset.cjs", { "repo": "your-org/your-repo" }],
 	"commit": false,
 	"fixed": [],
 	"linked": [],

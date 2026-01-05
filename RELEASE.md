@@ -13,7 +13,7 @@ git pull origin main
 ```
 
 > [!WARNING]
-> Do not merge other pull requests into `main` until the release is done. This is to ensure that the release is stable and does not include any untested changes. Announce internally (#prj-trackio) to other maintainers that you are doing a release and that they must not merge PRs until the release is done.
+> Do not merge other pull requests into `main` until the release is done. This is to ensure that the release is stable and does not include any untested changes. Announce internally to other maintainers that you are doing a release and that they must not merge PRs until the release is done.
 
 ### 2. Create a release branch from main
 
@@ -23,17 +23,17 @@ git checkout -b release-v{major}.{minor}
 
 ### 3. Change the version in the following file
 
-- `trackio/version.txt`:
+- `my_package/package.json`:
 
   ```diff
-  - {major}.{minor}.0.dev0
-  + {major}.{minor}.0
+  - "version": "{major}.{minor}.0.dev0"
+  + "version": "{major}.{minor}.0"
   ```
 
 ### 4. Commit and push these changes
 
 ```shell
-git add trackio/version.txt
+git add my-package/package.json
 git commit -m 'Release: {major}.{minor}'
 git push origin release-v{major}.{minor}
 ```
@@ -44,7 +44,7 @@ from `release-v{major}.{minor}` to `main`, named `Release: v{major}.{minor}`, wa
 
 ### 6. Once the pull request is approved, merge it into `main`
 
-This will automatically trigger the CI to pubish the package to PyPI.
+This will automatically trigger the CI to publish the package to PyPI.
 
 ### 7. Add a tag in git to mark the release
 
@@ -66,13 +66,13 @@ This ensures that future patch releases (`v{major}.{minor}.1`, `v{major}.{minor}
 
 ### 9. Create a GitHub Release
 
-1. Go to the repo’s [releases section](https://github.com/huggingface/trackio/releases) on GitHub.
+1. Go to the repo's releases section on GitHub.
 2. Click **Draft a new release**.
 3. Select the `v{major}.{minor}.0` tag you just created in step 7.
-4. Add a title (`v{major}.{minor}.0`) and a short description of what’s new.
+4. Add a title (`v{major}.{minor}.0`) and a short description of what's new.
 5. Click **Publish Release**.
 
-### 13. Bump to dev version
+### 10. Bump to dev version
 
 1. Create a branch `bump-dev-version-{major}.{minor+1}` from `main` and checkout to it.
 
@@ -80,17 +80,17 @@ This ensures that future patch releases (`v{major}.{minor}.1`, `v{major}.{minor}
    git checkout -b bump-dev-version-{major}.{minor+1}
    ```
 
-2. Change the version in `trackio/version.txt`
+2. Change the version in `my-package/package.json`
 
    ```diff
-   - {major}.{minor}.0
-   + {major}.{minor+1}.0.dev0
+   - "version": "{major}.{minor}.0"
+   + "version": "{major}.{minor+1}.0.dev0"
    ```
 
 3. Commit and push these changes
 
    ```shell
-   git add trackio/version.txt
+   git add my-package/package.json
    git commit -m '⬆️ Bump dev version'
    git push origin bump-dev-version-{major}.{minor+1}
    ```
@@ -99,7 +99,7 @@ This ensures that future patch releases (`v{major}.{minor}.1`, `v{major}.{minor}
 
 5. Once the pull request is approved, merge it into `main`.
 
-6. The codebase is now ready for the next development cycle, inform the team in the #prj-trackio channel.
+6. The codebase is now ready for the next development cycle.
 
 ## Making a patch release
 
@@ -120,17 +120,17 @@ git cherry-pick <commit-hash-1>
 
 ### 3. Change the version in the following files
 
-- `trackio/version.txt`:
+- `my_package/package.json`:
 
   ```diff
-  - {major}.{minor}.{patch-1}
-  + {major}.{minor}.{patch}
+  - "version": "{major}.{minor}.{patch-1}"
+  + "version": "{major}.{minor}.{patch}"
   ```
 
 ### 4. Commit and push these changes
 
 ```shell
-git add trackio/version.txt
+git add my-package/package.json
 git commit -m 'Release: {major}.{minor}.{patch}'
 git push origin v{major}.{minor}-release
 ```
@@ -148,8 +148,8 @@ git push origin v{major}.{minor}.{patch}
 
 ### 7. Create a GitHub Release
 
-1. Go to the repo’s [releases section](https://github.com/huggingface/trackio/releases) on GitHub.
+1. Go to the repo's releases section on GitHub.
 2. Click **Draft a new release**.
 3. Select the `v{major}.{minor}.{patch}` tag you just created in step 6.
-4. Add a title (`v{major}.{minor}.{patch}`) and a short description of what’s new.
+4. Add a title (`v{major}.{minor}.{patch}`) and a short description of what's new.
 5. Click **Publish Release**.
