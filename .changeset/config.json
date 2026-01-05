@@ -1,6 +1,6 @@
 {
 	"$schema": "https://unpkg.com/@changesets/config@2.3.0/schema.json",
-	"changelog": ["./changeset.cjs", { "repo": "your-org/your-repo" }],
+	"changelog": ["./changeset.cjs", { "repo": "abidlabs/daggr" }],
 	"commit": false,
 	"fixed": [],
 	"linked": [],

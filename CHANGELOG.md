@@ -1,4 +1,4 @@
-# my-package
+# daggr
 
 ## 0.1.0
 

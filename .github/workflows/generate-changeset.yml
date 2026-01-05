@@ -65,7 +65,7 @@ jobs:
         uses: "gradio-app/github/actions/generate-changeset@main"
         with:
           github_token: ${{ secrets.GRADIO_PAT }}
-          main_pkg: my-package
+          main_pkg: daggr
           pr_number: ${{ needs.get-pr.outputs.pr_number }}
           branch_name: ${{ needs.get-pr.outputs.source_branch }}
           actor: ${{ needs.get-pr.outputs.actor }}
@@ -93,7 +93,7 @@ jobs:
       gh_token: ${{ secrets.GRADIO_PAT }}
     with:
       pr_number: ${{ needs.get-pr.outputs.pr_number }}
-      message: changes~warning~https://github.com/your-org/your-repo/actions/runs/${{github.run_id}}/
+      message: changes~warning~https://github.com/abidlabs/daggr/actions/runs/${{github.run_id}}/
   comment-changes-success:
     uses: "./.github/workflows/comment-queue.yml"
     needs: [get-pr, version]
@@ -111,4 +111,4 @@ jobs:
       gh_token: ${{ secrets.GRADIO_PAT }}
     with:
       pr_number: ${{ needs.get-pr.outputs.pr_number }}
-      message: changes~failure~https://github.com/your-org/your-repo/actions/runs/${{github.run_id}}/
+      message: changes~failure~https://github.com/abidlabs/daggr/actions/runs/${{github.run_id}}/

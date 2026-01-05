@@ -1,32 +1,28 @@
-# my-package
+# daggr
 
-A Python package template.
-
-> **Note**: Replace `my-package` and `my_package` throughout this repository with your actual package name.
+A Python package.
 
 ## Installation
 
 This package requires [Python 3.10 or higher](https://www.python.org/downloads/). Install with `pip`:
 
 ```bash
-pip install my-package
+pip install daggr
 ```
 
 or with `uv`:
 
 ```bash
-uv pip install my-package
+uv pip install daggr
 ```
 
 ## Usage
 
 ```python
-import my_package
+import daggr
 
 # Your code here
 ```
-
-Replace `my_package` with your actual package name.
 
 ## Development
 
