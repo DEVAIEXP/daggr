@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Dict, Any, List
+from typing import TYPE_CHECKING, Any, Dict, List
 
 import gradio as gr
 
@@ -26,8 +26,8 @@ class UIGenerator:
         return self.graph._nx_graph.in_degree(node_name) == 0
 
     def _create_node_input_ui(self, node_name: str) -> List[gr.Component]:
-        from daggr.node import InteractionNode, GradioNode
-        from daggr.ops import ChooseOne, TextInput, ImageInput
+        from daggr.node import GradioNode, InteractionNode
+        from daggr.ops import ChooseOne, ImageInput, TextInput
 
         node = self.graph.nodes[node_name]
         components = []
@@ -107,7 +107,12 @@ class UIGenerator:
             node = self.graph.nodes[node_name]
             if self._is_entry_or_interaction(node_name):
                 if isinstance(node, InteractionNode):
-                    input_mapping.append((node_name, node._input_ports[0] if node._input_ports else "input"))
+                    input_mapping.append(
+                        (
+                            node_name,
+                            node._input_ports[0] if node._input_ports else "input",
+                        )
+                    )
                 else:
                     for port_name in node._input_ports:
                         input_mapping.append((node_name, port_name))

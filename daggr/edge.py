@@ -12,7 +12,6 @@ if TYPE_CHECKING:
 class Edge:
     def __init__(self, source: Port | Node, target: Port | Node):
         from daggr.node import Node
-        from daggr.port import Port
 
         if isinstance(source, Node):
             source = source._default_port()
@@ -45,4 +44,3 @@ class Edge:
             self.target_node.name,
             self.target_port,
         )
-

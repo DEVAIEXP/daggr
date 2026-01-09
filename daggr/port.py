@@ -16,6 +16,7 @@ class Port:
 
     def __rshift__(self, other: Port | Node) -> Port:
         from daggr.edge import Edge
+
         if isinstance(other, Port):
             Edge(self, other)
             return other.node._default_output_port()
@@ -29,4 +30,3 @@ class Port:
 
     def _as_target(self) -> tuple[Node, str]:
         return (self.node, self.name)
-

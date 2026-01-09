@@ -1,8 +1,8 @@
 __version__ = "0.1.0"
 
-from daggr.graph import Graph
-from daggr.node import GradioNode, InferenceNode, FnNode, InteractionNode, Node
 from daggr import ops
+from daggr.graph import Graph
+from daggr.node import FnNode, GradioNode, InferenceNode, InteractionNode, Node
 
 __all__ = [
     "Graph",

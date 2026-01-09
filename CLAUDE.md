@@ -31,7 +31,41 @@ ruff check --fix --select I && ruff format
 
 ## Architecture Overview
 
-This is a Python package template. Customize this section to describe your package's architecture.
+daggr is a DAG-based workflow library for connecting Gradio apps, ML models, and custom functions.
+
+### Core Components
+
+- **`context.py`**: Context management using `contextvars` for tracking the current Graph (similar to Gradio Blocks)
+- **`graph.py`**: Main `Graph` class with context manager support and DAG validation using networkx
+- **`node.py`**: Node types (`GradioNode`, `InferenceNode`, `FnNode`, `InteractionNode`) with port access via `__getitem__`
+- **`port.py`**: `Port` class representing input/output ports, supports `>>` operator for edge creation
+- **`edge.py`**: `Edge` class that auto-registers nodes with the current graph context
+- **`ops.py`**: Special operation nodes like `ChooseOne`, `TextInput`, `ImageInput`
+- **`executor.py`**: Sequential execution of workflow nodes
+- **`ui.py`**: Generates Gradio UI from the workflow graph
+
+### Key Design Patterns
+
+1. **Context Manager Pattern**: `with Graph() as graph:` sets up context for edge creation
+2. **Operator Overloading**: `>>` operator creates edges between ports/nodes
+3. **Auto-registration**: Nodes are automatically added to the graph when edges are created
+4. **Port Resolution**: `node["port_name"]` returns a `Port` object; shorthand `node >> node` uses default ports
+
+### Example Usage
+```python
+from daggr import Graph, GradioNode, FnNode, ops
+
+def process(text: str) -> dict:
+    return {"result": text.upper()}
+
+node1 = FnNode(fn=process)
+node2 = GradioNode(src="gradio/gpt2")
+
+with Graph() as graph:
+    node1["result"] >> node2["input"]
+
+graph.launch()
+```
 
 ### Testing Strategy
 
@@ -39,9 +73,10 @@ Tests are located in the `tests/` directory. The `conftest.py` provides shared f
 
 ### Important Files for Common Tasks
 
-- **Adding new features**: Modify `daggr/__init__.py` and relevant modules
-- **CLI modifications**: Update entry points in `pyproject.toml`
-- **Adding dependencies**: Update `pyproject.toml` under `[project.dependencies]` or `[project.optional-dependencies]`
+- **Adding new node types**: Modify `daggr/node.py`
+- **Adding new operations**: Modify `daggr/ops.py`
+- **Modifying UI generation**: Update `daggr/ui.py`
+- **Adding dependencies**: Update `pyproject.toml` under `[project.dependencies]`
 
 ## Issue Resolution Workflow
 

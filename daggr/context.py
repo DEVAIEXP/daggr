@@ -28,4 +28,3 @@ def set_graph_context(graph: Graph | None):
         LocalContext.graph.set(graph)
     else:
         Context.root_graph = graph
-

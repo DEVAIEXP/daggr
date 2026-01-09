@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Dict, Any, Optional
+from typing import TYPE_CHECKING, Any, Dict, Optional
 
 if TYPE_CHECKING:
     from daggr.graph import Graph
@@ -19,6 +19,7 @@ class SequentialExecutor:
             node = self.graph.nodes[node_name]
             if isinstance(node, GradioNode):
                 from gradio_client import Client
+
                 self.clients[node_name] = Client(node.src)
         return self.clients.get(node_name)
 
@@ -30,11 +31,18 @@ class SequentialExecutor:
             if target_name == node_name:
                 if source_name in self.results:
                     source_result = self.results[source_name]
-                    if isinstance(source_result, dict) and source_output in source_result:
+                    if (
+                        isinstance(source_result, dict)
+                        and source_output in source_result
+                    ):
                         inputs[target_input] = source_result[source_output]
                     elif isinstance(source_result, (list, tuple)):
                         try:
-                            output_idx = int(source_output.replace("output_", "").replace("output", "0"))
+                            output_idx = int(
+                                source_output.replace("output_", "").replace(
+                                    "output", "0"
+                                )
+                            )
                             if 0 <= output_idx < len(source_result):
                                 inputs[target_input] = source_result[output_idx]
                         except (ValueError, TypeError):
@@ -46,11 +54,9 @@ class SequentialExecutor:
         return inputs
 
     def execute_node(
-        self,
-        node_name: str,
-        user_inputs: Optional[Dict[str, Any]] = None
+        self, node_name: str, user_inputs: Optional[Dict[str, Any]] = None
     ) -> Any:
-        from daggr.node import GradioNode, FnNode, InferenceNode, InteractionNode
+        from daggr.node import FnNode, GradioNode, InferenceNode, InteractionNode
 
         node = self.graph.nodes[node_name]
         inputs = self._prepare_inputs(node_name)
@@ -84,12 +90,19 @@ class SequentialExecutor:
 
             elif isinstance(node, InferenceNode):
                 from huggingface_hub import InferenceClient
+
                 client = InferenceClient(model=node.model)
-                input_value = inputs.get("input", inputs.get(node._input_ports[0]) if node._input_ports else None)
+                input_value = inputs.get(
+                    "input",
+                    inputs.get(node._input_ports[0]) if node._input_ports else None,
+                )
                 result = client.text_generation(input_value) if input_value else None
 
             elif isinstance(node, InteractionNode):
-                result = inputs.get("input", inputs.get(node._input_ports[0]) if node._input_ports else None)
+                result = inputs.get(
+                    "input",
+                    inputs.get(node._input_ports[0]) if node._input_ports else None,
+                )
 
             else:
                 result = None

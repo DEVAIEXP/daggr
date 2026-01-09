@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-from typing import Dict, List, Optional, Any
+from typing import Any, Dict, List, Optional
 
 import networkx as nx
 
-from daggr.context import Context, get_graph_context, set_graph_context
-from daggr.node import Node, GradioNode
+from daggr.context import Context, get_graph_context
+from daggr.node import GradioNode, Node
 
 
 class Graph:
@@ -38,7 +38,6 @@ class Graph:
             node.discover_api()
 
     def _add_edge(self, edge: Any) -> None:
-        from daggr.edge import Edge
 
         self._add_node(edge.source_node)
         self._add_node(edge.target_node)
@@ -73,4 +72,3 @@ class Graph:
 
     def __repr__(self):
         return f"Graph(name={self.name}, nodes={len(self.nodes)}, edges={len(self._edges)})"
-

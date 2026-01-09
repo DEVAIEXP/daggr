@@ -55,4 +55,3 @@ class ImageInput(InteractionNode):
         self.label = label
         self._input_ports = []
         self._output_ports = ["image"]
-

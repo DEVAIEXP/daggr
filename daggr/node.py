@@ -1,10 +1,9 @@
 from __future__ import annotations
 
 import inspect
-from typing import Any, Callable, Dict, List, Optional
 from abc import ABC, abstractmethod
+from typing import Any, Callable, Dict, List, Optional
 
-from daggr.context import Context
 from daggr.port import Port
 
 
@@ -29,6 +28,7 @@ class Node(ABC):
 
     def __rshift__(self, other: Port | Node) -> Port:
         from daggr.edge import Edge
+
         source_port = self._default_output_port()
         if isinstance(other, Port):
             Edge(source_port, other)
@@ -78,6 +78,7 @@ class GradioNode(Node):
             return
         try:
             from gradio_client import Client
+
             client = Client(self.src)
             api_info = client.view_api(return_format="dict")
             self._api_info = api_info
@@ -100,8 +101,7 @@ class GradioNode(Node):
                         for i, p in enumerate(params)
                     ]
                     self._output_ports = [
-                        r.get("label") or f"output_{i}"
-                        for i, r in enumerate(returns)
+                        r.get("label") or f"output_{i}" for i, r in enumerate(returns)
                     ]
         except Exception as e:
             print(f"Warning: Could not discover API for {self.name}: {e}")
