@@ -43,7 +43,7 @@ summarizer = GradioNode(src="gradio/distilbart-cnn-12-6", name="Summarizer")
 
 graph = Graph(name="Text Pipeline")
 
-graph.edge(text_generator.outputs.output, summarizer.inputs.text)
+graph.edge(text_generator.output, summarizer.text)
 
 graph.launch()
 ```
@@ -71,8 +71,8 @@ node_c = FnNode(fn=step_c)
 graph = Graph(name="Chain Example")
 
 graph \
-    .edge(node_a.outputs.result, node_b.inputs.data) \
-    .edge(node_b.outputs.result, node_c.inputs.value)
+    .edge(node_a.result, node_b.data) \
+    .edge(node_b.result, node_c.value)
 
 graph.launch()
 ```
@@ -95,8 +95,8 @@ processor = FnNode(fn=process_text, outputs=[gr.Textbox(label="Result")])
 graph = Graph()
 
 graph \
-    .edge(text_input.outputs.Text, processor.inputs.text) \
-    .edge(count_input.outputs.Count, processor.inputs.count)
+    .edge(text_input.Text, processor.text) \
+    .edge(count_input.Count, processor.count)
 
 graph.launch()
 ```
@@ -188,14 +188,14 @@ combine_full = FnNode(
 graph = Graph(name="Podcast Generator")
 
 graph \
-    .edge(host_voice_input.outputs.Host_Voice, host_voice_gen.inputs.text_description) \
-    .edge(guest_voice_input.outputs.Guest_Voice, guest_voice_gen.inputs.text_description) \
-    .edge(topic_input.outputs.Topic, dialogue_gen.inputs.topic) \
-    .edge(dialogue_gen.outputs.dialogue, tts_map.inputs.items) \
-    .edge(host_voice_gen.outputs.voice, tts_map.inputs.host_voice) \
-    .edge(guest_voice_gen.outputs.voice, tts_map.inputs.guest_voice) \
-    .edge(tts_map.outputs.results, combine_test.inputs.segments) \
-    .edge(tts_map.outputs.results, combine_full.inputs.segments)
+    .edge(host_voice_input.Host_Voice, host_voice_gen.text_description) \
+    .edge(guest_voice_input.Guest_Voice, guest_voice_gen.text_description) \
+    .edge(topic_input.Topic, dialogue_gen.topic) \
+    .edge(dialogue_gen.dialogue, tts_map.items) \
+    .edge(host_voice_gen.voice, tts_map.host_voice) \
+    .edge(guest_voice_gen.voice, tts_map.guest_voice) \
+    .edge(tts_map.results, combine_test.segments) \
+    .edge(tts_map.results, combine_full.segments)
 
 
 graph.launch()

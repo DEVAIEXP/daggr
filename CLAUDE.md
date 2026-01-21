@@ -45,10 +45,11 @@ daggr is a DAG-based workflow library for connecting Gradio apps, ML models, and
 
 ### Key Design Patterns
 
-1. **Typed Port Access**: `node.inputs.port_name` and `node.outputs.port_name` return `Port` objects with IDE autocomplete
-2. **Explicit Edge Creation**: `graph.edge(source_port, target_port)` creates connections
+1. **Port Access**: `node.port_name` returns a `Port` object with IDE autocomplete (via `__dir__`)
+2. **Explicit Edge Creation**: `graph.edge(source, target)` - first arg is output port, second is input port
 3. **Fluent API**: `edge()` returns `self` for chaining: `graph.edge(...).edge(...).edge(...)`
 4. **Auto-discovery**: `FnNode` extracts input ports from function signatures
+5. **Internal Attributes**: Node internals use underscore prefix (`_name`, `_fn`, `_src`) to avoid conflicts with port names
 
 ### Example Usage
 ```python
@@ -62,8 +63,7 @@ node2 = GradioNode(src="gradio/gpt2")
 
 graph = Graph()
 
-graph \
-    .edge(node1.outputs.result, node2.inputs.input)
+graph.edge(node1.result, node2.input)
 
 graph.launch()
 ```

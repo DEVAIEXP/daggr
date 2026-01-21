@@ -1132,6 +1132,9 @@ class UIGenerator:
             return True
         return self.graph._nx_graph.in_degree(node_name) == 0
 
+    def _get_node_name(self, node) -> str:
+        return node._name
+
     def _get_component_type(self, component) -> str:
         class_name = component.__class__.__name__
         type_map = {
@@ -1217,8 +1220,8 @@ class UIGenerator:
             return []
 
         item_output_type = "text"
-        if hasattr(node, "item_output"):
-            item_output_type = self._get_component_type(node.item_output)
+        if hasattr(node, "_item_output"):
+            item_output_type = self._get_component_type(node._item_output)
 
         items = []
         if result and isinstance(result, dict) and "results" in result:
@@ -1351,8 +1354,8 @@ class UIGenerator:
             map_items = self._build_map_items(node, result) if is_map_node else []
 
             item_output_type = "text"
-            if is_map_node and hasattr(node, "item_output"):
-                item_output_type = self._get_component_type(node.item_output)
+            if is_map_node and hasattr(node, "_item_output"):
+                item_output_type = self._get_component_type(node._item_output)
 
             is_output = self._is_output_node(node_name)
             is_input = isinstance(node, InputNode)
@@ -1386,11 +1389,11 @@ class UIGenerator:
             edges.append(
                 {
                     "id": f"edge_{i}",
-                    "from_node": edge.source_node.name.replace(" ", "_").replace(
+                    "from_node": edge.source_node._name.replace(" ", "_").replace(
                         "-", "_"
                     ),
                     "from_port": edge.source_port,
-                    "to_node": edge.target_node.name.replace(" ", "_").replace(
+                    "to_node": edge.target_node._name.replace(" ", "_").replace(
                         "-", "_"
                     ),
                     "to_port": edge.target_port,
@@ -1459,8 +1462,8 @@ class UIGenerator:
                 node = self.graph.nodes[node_name]
                 if not isinstance(node, InputNode):
                     for edge in self.graph._edges:
-                        if edge.source_node.name == node_name:
-                            target_node = edge.target_node.name
+                        if edge.source_node._name == node_name:
+                            target_node = edge.target_node._name
                             target_port = edge.target_port
                             source_port = edge.source_port
 
@@ -1505,7 +1508,7 @@ class UIGenerator:
             return canvas_data
 
         edge = self.graph._edges[edge_idx]
-        source_node_name = edge.source_node.name
+        source_node_name = edge.source_node._name
 
         input_values = canvas_data.get("inputs", {})
         history = canvas_data.get("history", {})
@@ -1513,7 +1516,7 @@ class UIGenerator:
         user_input = input_values.get(source_node_name, {})
         result = self.executor.execute_node(source_node_name, user_input)
 
-        target_node = edge.target_node.name
+        target_node = edge.target_node._name
         target_port = edge.target_port
         source_port = edge.source_port
 

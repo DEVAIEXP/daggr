@@ -38,7 +38,7 @@ class TextInput(InteractionNode):
             name=name or f"text_input_{TextInput._instance_counter}",
             interaction_type="text_input",
         )
-        self.label = label
+        self._label = label
         self._input_ports = []
         self._output_ports = ["text"]
 
@@ -52,6 +52,6 @@ class ImageInput(InteractionNode):
             name=name or f"image_input_{ImageInput._instance_counter}",
             interaction_type="image_input",
         )
-        self.label = label
+        self._label = label
         self._input_ports = []
         self._output_ports = ["image"]

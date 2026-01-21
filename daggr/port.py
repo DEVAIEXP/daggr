@@ -12,7 +12,7 @@ class Port:
         self.name = name
 
     def __repr__(self):
-        return f"Port({self.node.name}.{self.name})"
+        return f"Port({self.node._name}.{self.name})"
 
     def _as_source(self) -> tuple[Node, str]:
         return (self.node, self.name)

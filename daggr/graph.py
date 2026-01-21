@@ -22,12 +22,12 @@ class Graph:
         return self
 
     def _add_node(self, node: Node) -> None:
-        if node.name in self.nodes:
-            if self.nodes[node.name] is not node:
-                raise ValueError(f"Node with name '{node.name}' already exists")
+        if node._name in self.nodes:
+            if self.nodes[node._name] is not node:
+                raise ValueError(f"Node with name '{node._name}' already exists")
             return
-        self.nodes[node.name] = node
-        self._nx_graph.add_node(node.name)
+        self.nodes[node._name] = node
+        self._nx_graph.add_node(node._name)
 
         if isinstance(node, GradioNode):
             node.discover_api()
@@ -37,10 +37,10 @@ class Graph:
         self._add_node(edge.target_node)
 
         self._edges.append(edge)
-        self._nx_graph.add_edge(edge.source_node.name, edge.target_node.name)
+        self._nx_graph.add_edge(edge.source_node._name, edge.target_node._name)
 
         if not nx.is_directed_acyclic_graph(self._nx_graph):
-            self._nx_graph.remove_edge(edge.source_node.name, edge.target_node.name)
+            self._nx_graph.remove_edge(edge.source_node._name, edge.target_node._name)
             self._edges.pop()
             raise ValueError("Connection would create a cycle in the DAG")
 

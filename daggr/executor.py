@@ -21,7 +21,7 @@ class SequentialExecutor:
             if isinstance(node, GradioNode):
                 from gradio_client import Client
 
-                self.clients[node_name] = Client(node.src)
+                self.clients[node_name] = Client(node._src)
         return self.clients.get(node_name)
 
     def _prepare_inputs(self, node_name: str) -> Dict[str, Any]:
@@ -102,12 +102,12 @@ class SequentialExecutor:
                 for port_name in node._input_ports:
                     if port_name in inputs:
                         fn_kwargs[port_name] = inputs[port_name]
-                result = node.fn(**fn_kwargs)
+                result = node._fn(**fn_kwargs)
 
             elif isinstance(node, InferenceNode):
                 from huggingface_hub import InferenceClient
 
-                client = InferenceClient(model=node.model)
+                client = InferenceClient(model=node._model)
                 input_value = inputs.get(
                     "input",
                     inputs.get(node._input_ports[0]) if node._input_ports else None,
@@ -140,10 +140,10 @@ class SequentialExecutor:
         for item in items:
             fn_kwargs = {node._item_param: item}
             fn_kwargs.update(context_inputs)
-            item_result = node.fn(**fn_kwargs)
+            item_result = node._fn(**fn_kwargs)
             results.append(item_result)
 
-        self.map_results[node.name] = results
+        self.map_results[node._name] = results
         return {"results": results}
 
     def execute_map_item(
@@ -171,7 +171,7 @@ class SequentialExecutor:
 
         fn_kwargs = {node._item_param: item}
         fn_kwargs.update(context_inputs)
-        result = node.fn(**fn_kwargs)
+        result = node._fn(**fn_kwargs)
 
         if node_name in self.map_results:
             self.map_results[node_name][item_index] = result

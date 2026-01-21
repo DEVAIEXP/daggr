@@ -16,14 +16,14 @@ class Edge:
 
     def __repr__(self):
         return (
-            f"Edge({self.source_node.name}.{self.source_port} -> "
-            f"{self.target_node.name}.{self.target_port})"
+            f"Edge({self.source_node._name}.{self.source_port} -> "
+            f"{self.target_node._name}.{self.target_port})"
         )
 
     def as_tuple(self) -> tuple[str, str, str, str]:
         return (
-            self.source_node.name,
+            self.source_node._name,
             self.source_port,
-            self.target_node.name,
+            self.target_node._name,
             self.target_port,
         )
