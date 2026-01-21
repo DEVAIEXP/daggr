@@ -4,6 +4,7 @@ import json
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 import gradio as gr
+from gradio_canvas_component import CanvasComponent
 
 from daggr.executor import SequentialExecutor
 from daggr.state import SessionState
@@ -13,6 +14,7 @@ if TYPE_CHECKING:
 
 
 class WorkflowCanvas(gr.HTML):
+    """Legacy HTML-based canvas - kept for reference."""
     def __init__(self, graph_data: dict | None = None, **kwargs):
         html_template = """
         <div class="workflow-container">
@@ -1401,6 +1403,7 @@ class UIGenerator:
             )
 
         return {
+            "name": self.graph.name,
             "nodes": nodes,
             "edges": edges,
             "inputs": input_values,
@@ -1632,7 +1635,7 @@ class UIGenerator:
             return canvas_data
 
         with gr.Blocks(title=self.graph.name) as demo:
-            canvas = WorkflowCanvas(graph_data=initial_data)
+            canvas = CanvasComponent(value=initial_data)
 
             canvas.change(
                 fn=handle_canvas_action,
