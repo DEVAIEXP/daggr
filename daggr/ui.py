@@ -142,7 +142,9 @@ class UIGenerator:
 
             if result is not None:
                 if isinstance(result, dict):
-                    comp_data["value"] = result.get(port_name, result.get(comp_data["props"]["label"]))
+                    comp_data["value"] = result.get(
+                        port_name, result.get(comp_data["props"]["label"])
+                    )
                 else:
                     comp_data["value"] = result
 
@@ -305,11 +307,16 @@ class UIGenerator:
         for syn_node in synthetic_input_nodes:
             target_depth = depths.get(syn_node["target_node"], 0)
             all_input_nodes_sorted.append({**syn_node, "target_depth": target_depth})
-        all_input_nodes_sorted.sort(key=lambda x: (x["target_depth"], x["target_node"], x["index"]))
+        all_input_nodes_sorted.sort(
+            key=lambda x: (x["target_depth"], x["target_node"], x["index"])
+        )
 
         current_input_y = y_start
         for syn_node in all_input_nodes_sorted:
-            input_node_positions[syn_node["node_name"]] = (input_column_x, current_input_y)
+            input_node_positions[syn_node["node_name"]] = (
+                input_column_x,
+                current_input_y,
+            )
             node_height = calc_node_height([syn_node["component"]], 1)
             current_input_y += node_height + y_gap
 
@@ -320,7 +327,9 @@ class UIGenerator:
             for node_name in depth_nodes:
                 node = self.graph.nodes[node_name]
                 output_comps = self._build_output_components(node)
-                num_ports = max(len(node._input_ports or []), len(node._output_ports or []))
+                num_ports = max(
+                    len(node._input_ports or []), len(node._output_ports or [])
+                )
                 node_height = calc_node_height(output_comps, num_ports)
                 x = x_start + depth * x_spacing
                 node_positions[node_name] = (x, current_y)
@@ -664,15 +673,15 @@ class UIGenerator:
                 inputs=[canvas],
                 outputs=[canvas],
                 show_progress="hidden",
-                trigger_mode="multiple"
+                trigger_mode="multiple",
             )
-            
+
             canvas.input(
                 fn=handle_canvas_action,
                 inputs=[canvas],
                 outputs=[canvas],
                 show_progress="hidden",
-                trigger_mode="multiple"
+                trigger_mode="multiple",
             )
 
         return demo

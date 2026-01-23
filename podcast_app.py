@@ -1,6 +1,6 @@
 import gradio as gr
 
-from daggr import Graph, FnNode, GradioNode
+from daggr import FnNode, GradioNode, Graph
 
 host_voice = GradioNode(
     space_or_url="abidlabs/tts",
