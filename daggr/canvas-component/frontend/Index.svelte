@@ -1,3 +1,8 @@
+<script context="module" lang="ts">
+	// Truly module-level Set - persists across all component instances/re-renders
+	const globalProcessedSet = new Set<string>();
+</script>
+
 <script lang="ts">
 	import { Block } from "@gradio/atoms";
 	import { StatusTracker } from "@gradio/statustracker";
@@ -78,6 +83,9 @@
 	// Track pending run IDs per node (queue of run IDs waiting for results)
 	let pendingRunIds = $state<Record<string, string[]>>({});
 
+	// Track which nodes are being executed for each run_id
+	let runIdToNodes = $state<Record<string, string[]>>({});
+
 	// Track multiple results per node (array of results)
 	let nodeResults = $state<Record<string, any[]>>({});
 
@@ -92,6 +100,27 @@
 		}
 		return counts;
 	});
+
+	// Get ancestors of a node from the edges
+	function getAncestors(nodeName: string): string[] {
+		const ancestors = new Set<string>();
+		const toVisit = [nodeName];
+		
+		while (toVisit.length > 0) {
+			const current = toVisit.pop()!;
+			for (const edge of edges) {
+				if (edge.to_node === current.replace(/ /g, '_').replace(/-/g, '_')) {
+					const sourceNode = nodes.find(n => n.id === edge.from_node);
+					if (sourceNode && !sourceNode.is_input_node && !ancestors.has(sourceNode.name)) {
+						ancestors.add(sourceNode.name);
+						toVisit.push(sourceNode.name);
+					}
+				}
+			}
+		}
+		
+		return Array.from(ancestors);
+	}
 
 	function handleInputChange(nodeId: string, portName: string, value: any) {
 		if (!inputValues[nodeId]) {
@@ -248,24 +277,34 @@
 
 	function handleRunToNode(e: MouseEvent, nodeName: string) {
 		e.stopPropagation();
-		console.log("[DEBUG] Run button clicked for node:", nodeName);
 		
-		// Generate unique run ID and add to pending
 		const runId = `${nodeName}_${Date.now()}_${Math.random().toString(36).slice(2)}`;
-		if (!pendingRunIds[nodeName]) {
-			pendingRunIds[nodeName] = [];
+		const ancestors = getAncestors(nodeName);
+		const nodesToExecute = [...ancestors, nodeName];
+		
+		// Only add pending badges for nodes that don't already have results (will be skipped on backend)
+		const nodesToRun = nodesToExecute.filter(n => !nodeResults[n] || nodeResults[n].length === 0);
+		
+		for (const nodeToRun of nodesToRun) {
+			if (!pendingRunIds[nodeToRun]) {
+				pendingRunIds[nodeToRun] = [];
+			}
+			pendingRunIds[nodeToRun] = [...pendingRunIds[nodeToRun], runId];
 		}
-		pendingRunIds[nodeName] = [...pendingRunIds[nodeName], runId];
+		
+		// Track which nodes this run_id will actually execute
+		runIdToNodes[runId] = nodesToRun;
 		
 		if (gradio.props.value) {
 			const newValue = {
 				...gradio.props.value,
 				inputs: { ...gradio.props.value.inputs, ...inputValues },
 				run_to_node: nodeName,
-				run_id: runId
+				run_id: runId,
+				completed_node: null,
+				selected_results: { ...selectedResultIndex }  // Pass selected result indices to backend
 			};
 			gradio.props.value = newValue;
-			gradio.dispatch("input", newValue);
 			gradio.dispatch("change", newValue);
 		}
 	}
@@ -281,40 +320,51 @@
 		return `background: ${colors[type] || '#666'};`;
 	}
 
-	// Process incoming results from backend
+	// Process incoming results from backend (streaming)
 	$effect(() => {
 		const data = gradio.props.value;
 		if (!data) return;
 		
-		// Check if this response includes a completed run_id
-		const completedRunId = data.completed_run_id;
-		if (!completedRunId) return;
+		const runId = data.run_id;
+		const completedNode = data.completed_node;
+		if (!runId || !completedNode) return;
 		
-		// Find which node this run_id belongs to
-		for (const [nodeName, ids] of Object.entries(pendingRunIds)) {
-			const idx = ids.indexOf(completedRunId);
-			if (idx !== -1) {
-				// Remove this run_id from pending
-				pendingRunIds[nodeName] = ids.filter((_, i) => i !== idx);
-				
-				// Find the node and add its result
-				const node = data.nodes?.find((n: GraphNode) => n.name === nodeName);
-				if (node && node.output_components?.length > 0) {
-					const hasResult = node.output_components.some((c: GradioComponentData) => c.value != null);
-					if (hasResult) {
-						if (!nodeResults[nodeName]) {
-							nodeResults[nodeName] = [];
-						}
-						
-						const resultSnapshot = node.output_components.map((c: GradioComponentData) => ({
-							...c
-						}));
-						
-						nodeResults[nodeName] = [...nodeResults[nodeName], resultSnapshot];
-						selectedResultIndex[nodeName] = nodeResults[nodeName].length - 1;
+		const completionKey = `${runId}:${completedNode}`;
+		
+		if (globalProcessedSet.has(completionKey)) return;
+		globalProcessedSet.add(completionKey);
+		
+		if (pendingRunIds[completedNode]) {
+			pendingRunIds[completedNode] = pendingRunIds[completedNode].filter(id => id !== runId);
+		}
+		
+		const executedNodes = runIdToNodes[runId];
+		if (executedNodes) {
+			const allDone = executedNodes.every(n => globalProcessedSet.has(`${runId}:${n}`));
+			if (allDone) {
+				delete runIdToNodes[runId];
+				setTimeout(() => {
+					for (const n of executedNodes) {
+						globalProcessedSet.delete(`${runId}:${n}`);
 					}
+				}, 1000);
+			}
+		}
+		
+		const node = data.nodes?.find((n: GraphNode) => n.name === completedNode);
+		if (node && node.output_components?.length > 0) {
+			const hasResult = node.output_components.some((c: GradioComponentData) => c.value != null);
+			if (hasResult) {
+				if (!nodeResults[completedNode]) {
+					nodeResults[completedNode] = [];
 				}
-				break;
+				
+				const resultSnapshot = node.output_components.map((c: GradioComponentData) => ({
+					...c
+				}));
+				
+				nodeResults[completedNode] = [...nodeResults[completedNode], resultSnapshot];
+				selectedResultIndex[completedNode] = nodeResults[completedNode].length - 1;
 			}
 		}
 	});
@@ -495,12 +545,17 @@
 											/>
 											<span class="gr-check-label">{comp.props?.label || comp.port_name}</span>
 										</label>
-									{:else if comp.component === 'markdown'}
-										<div class="gr-textbox-wrap">
-											<span class="gr-label">{comp.props?.label || comp.port_name}</span>
-											<div class="gr-markdown">{@html comp.value || ''}</div>
-										</div>
-									{:else if comp.component === 'json'}
+{:else if comp.component === 'markdown'}
+								<div class="gr-textbox-wrap">
+									<span class="gr-label">{comp.props?.label || comp.port_name}</span>
+									<div class="gr-markdown">{@html comp.value || ''}</div>
+								</div>
+							{:else if comp.component === 'html'}
+								<div class="gr-textbox-wrap">
+									<span class="gr-label">{comp.props?.label || comp.port_name}</span>
+									<div class="gr-html">{@html comp.value || ''}</div>
+								</div>
+							{:else if comp.component === 'json'}
 										<div class="gr-textbox-wrap">
 											<span class="gr-label">{comp.props?.label || comp.port_name}</span>
 											<pre class="gr-json">{typeof comp.value === 'string' ? comp.value : JSON.stringify(comp.value, null, 2)}</pre>
@@ -891,6 +946,37 @@
 		padding: 6px 10px 8px;
 		max-height: 100px;
 		overflow: auto;
+	}
+
+	.gr-html {
+		font-size: 11px;
+		color: #d1d5db;
+		line-height: 1.4;
+		padding: 6px 10px 8px;
+		max-height: 100px;
+		overflow: auto;
+	}
+
+	.gr-html :global(strong), .gr-html :global(b) {
+		font-weight: 600;
+		color: #f3f4f6;
+	}
+
+	.gr-html :global(em), .gr-html :global(i) {
+		font-style: italic;
+	}
+
+	.gr-html :global(a) {
+		color: #f97316;
+		text-decoration: underline;
+	}
+
+	.gr-html :global(code) {
+		font-family: 'SF Mono', Monaco, Consolas, monospace;
+		background: rgba(249, 115, 22, 0.1);
+		padding: 1px 4px;
+		border-radius: 3px;
+		font-size: 10px;
 	}
 
 	.gr-json {

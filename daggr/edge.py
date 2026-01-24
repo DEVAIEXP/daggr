@@ -11,11 +11,11 @@ class Edge:
         from daggr.port import GatheredPort, ScatteredPort
 
         self.is_scattered = isinstance(source, ScatteredPort)
-        self.is_gathered = isinstance(target, GatheredPort)
-        self.item_output: Optional[Any] = None
+        self.is_gathered = isinstance(source, GatheredPort)
+        self.item_key: Optional[str] = None
 
         if self.is_scattered:
-            self.item_output = source.item_output
+            self.item_key = source.item_key
 
         self.source_node = source.node
         self.source_port = source.name
@@ -25,7 +25,8 @@ class Edge:
     def __repr__(self):
         prefix = ""
         if self.is_scattered:
-            prefix = "scatter:"
+            key_info = f"['{self.item_key}']" if self.item_key else ""
+            prefix = f"scatter{key_info}:"
         elif self.is_gathered:
             prefix = "gather:"
         return (

@@ -237,6 +237,35 @@ class SessionState:
             return json.loads(result[0])
         return None
 
+    def get_result_by_index(self, session_id: str, node_name: str, index: int) -> Optional[Any]:
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        cursor.execute(
+            """SELECT result FROM node_results 
+               WHERE session_id = ? AND node_name = ? 
+               ORDER BY created_at ASC""",
+            (session_id, node_name),
+        )
+        results = cursor.fetchall()
+        conn.close()
+        if results and 0 <= index < len(results):
+            return json.loads(results[index][0])
+        elif results:
+            return json.loads(results[-1][0])
+        return None
+
+    def get_result_count(self, session_id: str, node_name: str) -> int:
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        cursor.execute(
+            """SELECT COUNT(*) FROM node_results 
+               WHERE session_id = ? AND node_name = ?""",
+            (session_id, node_name),
+        )
+        count = cursor.fetchone()[0]
+        conn.close()
+        return count
+
     def get_all_results(self, session_id: str) -> Dict[str, Any]:
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()

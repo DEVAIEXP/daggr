@@ -650,33 +650,24 @@ class UIGenerator:
 
         def handle_canvas_action(canvas_data):
             if not canvas_data:
-                print("[DEBUG] No canvas_data, returning initial graph")
-                return self._build_graph_data()
+                yield self._build_graph_data()
+                return
 
             run_to_node = canvas_data.get("run_to_node")
             run_id = canvas_data.get("run_id")
             if run_to_node:
                 canvas_data["run_to_node"] = None
                 canvas_data["run_id"] = None
-                result = self._execute_to_node(canvas_data, run_to_node)
-                if run_id:
-                    result["completed_run_id"] = run_id
-                return result
+                for result in self._execute_to_node_streaming(canvas_data, run_to_node, run_id):
+                    yield result
+                return
 
-            return canvas_data
+            yield canvas_data
 
         with gr.Blocks(title=self.graph.name) as demo:
             canvas = CanvasComponent(value=initial_data)
 
             canvas.change(
-                fn=handle_canvas_action,
-                inputs=[canvas],
-                outputs=[canvas],
-                show_progress="hidden",
-                trigger_mode="multiple",
-            )
-
-            canvas.input(
                 fn=handle_canvas_action,
                 inputs=[canvas],
                 outputs=[canvas],
@@ -697,7 +688,7 @@ class UIGenerator:
                     to_visit.append(source)
         return list(ancestors)
 
-    def _execute_to_node(self, canvas_data: dict, target_node: str) -> dict:
+    def _execute_to_node_streaming(self, canvas_data: dict, target_node: str, run_id: str):
         from daggr.node import InteractionNode
 
         print(f"[RUN] Executing to node: {target_node}")
@@ -733,10 +724,36 @@ class UIGenerator:
 
         node_results = {}
         node_statuses = {}
-        self.executor.results = {}
+        
+        # Get selected result indices from frontend (which result the user has selected for each node)
+        selected_results = canvas_data.get("selected_results", {}) if canvas_data else {}
+        
+        # Load existing results from session state to skip already-completed nodes
+        # Use the selected index if provided, otherwise use the latest result
+        existing_results = {}
+        if self.session_id:
+            for node_name in nodes_to_execute:
+                if node_name in selected_results:
+                    cached = self.state.get_result_by_index(
+                        self.session_id, node_name, selected_results[node_name]
+                    )
+                else:
+                    cached = self.state.get_latest_result(self.session_id, node_name)
+                if cached is not None:
+                    existing_results[node_name] = cached
+        
+        # Pre-populate executor with existing results so downstream nodes can use them
+        self.executor.results = dict(existing_results)
 
         try:
             for node_name in nodes_to_execute:
+                # Skip if we already have results for this node
+                if node_name in existing_results:
+                    print(f"[RUN] {node_name} (cached)")
+                    node_results[node_name] = existing_results[node_name]
+                    node_statuses[node_name] = "completed"
+                    continue
+                
                 print(f"[RUN] {node_name}...")
                 node_statuses[node_name] = "running"
                 user_input = entry_inputs.get(node_name, {})
@@ -747,6 +764,13 @@ class UIGenerator:
 
                 self.state.save_result(self.session_id, node_name, result)
 
+                graph_data = self._build_graph_data(
+                    node_results, node_statuses, input_values, history
+                )
+                graph_data["completed_node"] = node_name
+                graph_data["run_id"] = run_id
+                yield graph_data
+
         except Exception as e:
             print(f"[RUN] Error: {e}")
             if nodes_to_execute:
@@ -756,6 +780,8 @@ class UIGenerator:
                     node_statuses[current_node] = "error"
                     node_results[current_node] = {"error": str(e)}
 
-        return self._build_graph_data(
-            node_results, node_statuses, input_values, history
-        )
+            graph_data = self._build_graph_data(
+                node_results, node_statuses, input_values, history
+            )
+            graph_data["run_id"] = run_id
+            yield graph_data

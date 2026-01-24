@@ -20,11 +20,20 @@ class Port:
     def _as_target(self) -> tuple[Node, str]:
         return (self.node, self.name)
 
+    @property
+    def each(self) -> ScatteredPort:
+        """Scatter this port's output - run the downstream node once per item in the list."""
+        return ScatteredPort(self)
+
+    def all(self) -> GatheredPort:
+        """Gather outputs from a scattered node back into a list."""
+        return GatheredPort(self)
+
 
 class ScatteredPort:
-    def __init__(self, port: Port, item_output: Optional[Any] = None):
+    def __init__(self, port: Port, item_key: Optional[str] = None):
         self.port = port
-        self.item_output = item_output
+        self.item_key = item_key
 
     @property
     def node(self):
@@ -34,7 +43,13 @@ class ScatteredPort:
     def name(self):
         return self.port.name
 
+    def __getitem__(self, key: str) -> ScatteredPort:
+        """Access a specific field from each scattered item (e.g., dialogue.json.each["text"])."""
+        return ScatteredPort(self.port, key)
+
     def __repr__(self):
+        if self.item_key:
+            return f"ScatteredPort({self.port}['{self.item_key}'])"
         return f"ScatteredPort({self.port})"
 
 
@@ -54,8 +69,8 @@ class GatheredPort:
         return f"GatheredPort({self.port})"
 
 
-def scatter(port: Port, item_output: Optional[Any] = None) -> ScatteredPort:
-    return ScatteredPort(port, item_output)
+def scatter(port: Port, item_key: Optional[str] = None) -> ScatteredPort:
+    return ScatteredPort(port, item_key)
 
 
 def gather(port: Port) -> GatheredPort:

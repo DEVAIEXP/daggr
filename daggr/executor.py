@@ -24,16 +24,17 @@ class SequentialExecutor:
                 self.clients[node_name] = Client(node._src, download_files=False)
         return self.clients.get(node_name)
 
-    def _get_scattered_input_edge(self, node_name: str):
+    def _get_scattered_input_edges(self, node_name: str) -> List:
+        scattered = []
         for edge in self.graph._edges:
             if edge.target_node._name == node_name and edge.is_scattered:
-                return edge
-        return None
+                scattered.append(edge)
+        return scattered
 
-    def _get_gathered_output_edges(self, node_name: str):
+    def _get_gathered_input_edges(self, node_name: str) -> List:
         gathered = []
         for edge in self.graph._edges:
-            if edge.source_node._name == node_name and edge.is_gathered:
+            if edge.target_node._name == node_name and edge.is_gathered:
                 gathered.append(edge)
         return gathered
 
@@ -206,11 +207,11 @@ class SequentialExecutor:
         self, node_name: str, user_inputs: Optional[Dict[str, Any]] = None
     ) -> Any:
         node = self.graph.nodes[node_name]
-        scattered_edge = self._get_scattered_input_edge(node_name)
+        scattered_edges = self._get_scattered_input_edges(node_name)
 
-        if scattered_edge:
+        if scattered_edges:
             result = self._execute_scattered_node(
-                node_name, scattered_edge, user_inputs
+                node_name, scattered_edges, user_inputs
             )
         else:
             inputs = self._prepare_inputs(node_name)
@@ -234,12 +235,12 @@ class SequentialExecutor:
     def _execute_scattered_node(
         self,
         node_name: str,
-        scattered_edge,
+        scattered_edges: List,
         user_inputs: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, List[Any]]:
-        source_name = scattered_edge.source_node._name
-        source_port = scattered_edge.source_port
-        target_port = scattered_edge.target_port
+        first_edge = scattered_edges[0]
+        source_name = first_edge.source_node._name
+        source_port = first_edge.source_port
 
         source_result = self.results.get(source_name)
         if source_result is None:
@@ -259,7 +260,13 @@ class SequentialExecutor:
         results = []
         for item in items:
             item_inputs = dict(context_inputs)
-            item_inputs[target_port] = item
+            for edge in scattered_edges:
+                target_port = edge.target_port
+                item_key = edge.item_key
+                if item_key and isinstance(item, dict):
+                    item_inputs[target_port] = item.get(item_key)
+                else:
+                    item_inputs[target_port] = item
 
             try:
                 item_result = self._execute_single_node(node_name, item_inputs)
@@ -273,13 +280,13 @@ class SequentialExecutor:
     def execute_scattered_item(
         self, node_name: str, item_index: int, inputs: Optional[Dict[str, Any]] = None
     ) -> Any:
-        scattered_edge = self._get_scattered_input_edge(node_name)
-        if not scattered_edge:
+        scattered_edges = self._get_scattered_input_edges(node_name)
+        if not scattered_edges:
             raise ValueError(f"Node '{node_name}' does not have a scattered input")
 
-        source_name = scattered_edge.source_node._name
-        source_port = scattered_edge.source_port
-        target_port = scattered_edge.target_port
+        first_edge = scattered_edges[0]
+        source_name = first_edge.source_node._name
+        source_port = first_edge.source_port
 
         source_result = self.results.get(source_name)
         if source_result is None:
@@ -301,7 +308,14 @@ class SequentialExecutor:
             context_inputs.update(inputs)
 
         item_inputs = dict(context_inputs)
-        item_inputs[target_port] = item
+        for edge in scattered_edges:
+            target_port = edge.target_port
+            item_key = edge.item_key
+            if item_key and isinstance(item, dict):
+                item_inputs[target_port] = item.get(item_key)
+            else:
+                item_inputs[target_port] = item
+
         result = self._execute_single_node(node_name, item_inputs)
 
         if node_name in self.scattered_results:
