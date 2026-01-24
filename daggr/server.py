@@ -112,6 +112,25 @@ class DaggrServer:
                 return FileResponse(file_path, media_type=content_type)
             return Response(status_code=404)
 
+        @self.app.get("/file/{path:path}")
+        async def serve_local_file(path: str):
+            import tempfile
+
+            file_path = Path("/") / path
+            temp_dir = Path(tempfile.gettempdir()).resolve()
+            try:
+                resolved = file_path.resolve()
+                if not str(resolved).startswith(str(temp_dir)):
+                    return Response(status_code=403)
+            except (ValueError, OSError):
+                return Response(status_code=403)
+            if resolved.exists() and resolved.is_file():
+                content_type, _ = mimetypes.guess_type(str(resolved))
+                return FileResponse(
+                    resolved, media_type=content_type or "application/octet-stream"
+                )
+            return Response(status_code=404)
+
         @self.app.get("/{path:path}")
         async def serve_static(path: str):
             if path.startswith("api/") or path.startswith("ws/"):
@@ -215,6 +234,16 @@ class DaggrServer:
             "value": getattr(comp, "value", None),
         }
 
+    def _file_to_url(self, value: Any) -> Any:
+        if (
+            isinstance(value, str)
+            and value.startswith("/")
+            and not value.startswith("/file/")
+        ):
+            if Path(value).exists():
+                return f"/file{value}"
+        return value
+
     def _build_input_components(self, node) -> List[Dict[str, Any]]:
         if not node._input_components:
             return []
@@ -236,13 +265,17 @@ class DaggrServer:
                 continue
 
             comp_data = self._serialize_component(comp, port_name)
+            comp_type = self._get_component_type(comp)
             if result is not None:
                 if isinstance(result, dict):
-                    comp_data["value"] = result.get(
+                    value = result.get(
                         port_name, result.get(comp_data["props"]["label"])
                     )
                 else:
-                    comp_data["value"] = result
+                    value = result
+                if comp_type == "audio":
+                    value = self._file_to_url(value)
+                comp_data["value"] = value
             components.append(comp_data)
         return components
 
@@ -281,9 +314,14 @@ class DaggrServer:
                 if isinstance(item_result, dict):
                     first_key = list(item_result.keys())[0] if item_result else None
                     if first_key:
-                        output = str(item_result[first_key])
+                        output = item_result[first_key]
                 else:
-                    output = str(item_result) if item_result else None
+                    output = item_result
+
+                if output and item_output_type == "audio":
+                    output = self._file_to_url(output)
+                elif output:
+                    output = str(output)
 
                 items.append(
                     {

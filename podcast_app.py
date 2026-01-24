@@ -1,3 +1,4 @@
+import ssl
 import tempfile
 import time
 import urllib.request
@@ -101,7 +102,12 @@ def combine_audio_files(audio_files: list[str]) -> str:
         if audio_path:
             if audio_path.startswith(("http://", "https://")):
                 tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3")
-                urllib.request.urlretrieve(audio_path, tmp.name)
+                ctx = ssl.create_default_context()
+                ctx.check_hostname = False
+                ctx.verify_mode = ssl.CERT_NONE
+                with urllib.request.urlopen(audio_path, context=ctx) as response:
+                    tmp.write(response.read())
+                tmp.close()
                 segment = AudioSegment.from_file(tmp.name)
             else:
                 segment = AudioSegment.from_file(audio_path)
