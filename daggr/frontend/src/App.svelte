@@ -568,6 +568,66 @@
 		e.stopPropagation();
 		console.log(`Replay item ${itemIndex} for node ${nodeName}`);
 	}
+
+	let audioElements = $state<Record<string, HTMLAudioElement>>({});
+	let audioStates = $state<Record<string, { playing: boolean; current: number; duration: number }>>({});
+
+	function formatTime(seconds: number): string {
+		if (!seconds || !isFinite(seconds)) return '0:00';
+		const mins = Math.floor(seconds / 60);
+		const secs = Math.floor(seconds % 60);
+		return `${mins}:${secs.toString().padStart(2, '0')}`;
+	}
+
+	function getAudioState(id: string) {
+		return audioStates[id] || { playing: false, current: 0, duration: 0 };
+	}
+
+	function toggleAudio(e: MouseEvent, id: string) {
+		e.stopPropagation();
+		const audio = audioElements[id];
+		if (!audio) return;
+		if (audio.paused) {
+			audio.play();
+		} else {
+			audio.pause();
+		}
+	}
+
+	function seekAudio(e: MouseEvent, id: string) {
+		e.stopPropagation();
+		const audio = audioElements[id];
+		if (!audio || !audio.duration) return;
+		const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+		const x = e.clientX - rect.left;
+		const percent = x / rect.width;
+		audio.currentTime = percent * audio.duration;
+	}
+
+	function registerAudio(el: HTMLAudioElement, id: string) {
+		audioElements[id] = el;
+		if (!audioStates[id]) {
+			audioStates[id] = { playing: false, current: 0, duration: 0 };
+		}
+		el.onloadedmetadata = () => {
+			audioStates[id] = { ...audioStates[id], duration: el.duration };
+		};
+		el.ontimeupdate = () => {
+			audioStates[id] = { ...audioStates[id], current: el.currentTime };
+		};
+		el.onplay = () => {
+			audioStates[id] = { ...audioStates[id], playing: true };
+		};
+		el.onpause = () => {
+			audioStates[id] = { ...audioStates[id], playing: false };
+		};
+		el.onended = () => {
+			audioStates[id] = { ...audioStates[id], playing: false, current: 0 };
+		};
+		return {
+			destroy() {}
+		};
+	}
 </script>
 
 <div 
@@ -724,11 +784,30 @@
 										<pre class="gr-json">{typeof comp.value === 'string' ? comp.value : JSON.stringify(comp.value, null, 2)}</pre>
 									</div>
 								{:else if comp.component === 'audio'}
+									{@const audioId = `${node.id}_${comp.port_name}`}
+									{@const audioSrc = comp.value?.url || comp.value}
+									{@const state = getAudioState(audioId)}
 									<div class="gr-audio-wrap">
 										<span class="gr-label">{comp.props?.label || comp.port_name}</span>
-										{#if comp.value}
-											<div class="gr-audio-container">
-												<audio controls class="gr-audio" src={comp.value?.url || comp.value}></audio>
+										{#if audioSrc}
+											<audio 
+												src={audioSrc} 
+												preload="metadata"
+												style="display:none"
+												use:registerAudio={audioId}
+											></audio>
+											<div class="audio-player">
+												<button class="audio-play-btn" onclick={(e) => toggleAudio(e, audioId)}>
+													{#if state.playing}
+														<svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
+													{:else}
+														<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+													{/if}
+												</button>
+												<div class="audio-progress" onclick={(e) => seekAudio(e, audioId)}>
+													<div class="audio-progress-fill" style="width: {state.duration ? (state.current / state.duration) * 100 : 0}%"></div>
+												</div>
+												<span class="audio-time">{formatTime(state.current)} / {formatTime(state.duration)}</span>
 											</div>
 										{:else}
 											<div class="gr-empty">No audio</div>
@@ -783,12 +862,30 @@
 							{#each node.map_items as item (item.index)}
 								<div class="map-item" class:has-output={item.output}>
 									<span class="map-item-index">{item.index}.</span>
-									<div class="map-item-content">
-										{#if item.is_audio_output && item.output}
-											<div class="map-item-audio">
-												<audio controls src={item.output}></audio>
+								<div class="map-item-content">
+									{#if item.is_audio_output && item.output}
+										{@const audioId = `${node.id}_map_${item.index}`}
+										{@const state = getAudioState(audioId)}
+										<audio 
+											src={item.output} 
+											preload="metadata"
+											style="display:none"
+											use:registerAudio={audioId}
+										></audio>
+										<div class="audio-player audio-player-compact">
+											<button class="audio-play-btn" onclick={(e) => toggleAudio(e, audioId)}>
+												{#if state.playing}
+													<svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
+												{:else}
+													<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+												{/if}
+											</button>
+											<div class="audio-progress" onclick={(e) => seekAudio(e, audioId)}>
+												<div class="audio-progress-fill" style="width: {state.duration ? (state.current / state.duration) * 100 : 0}%"></div>
 											</div>
-										{:else if item.output}
+											<span class="audio-time">{formatTime(state.current)} / {formatTime(state.duration)}</span>
+										</div>
+									{:else if item.output}
 											<span class="map-item-preview" title={item.output}>
 												{item.output.length > 40 ? item.output.slice(0, 40) + '...' : item.output}
 											</span>
@@ -1290,18 +1387,88 @@
 		overflow: hidden;
 	}
 
-	.gr-audio-container {
-		padding: 6px 8px 8px;
-		background: linear-gradient(135deg, #2a2a2a 0%, #222 100%);
-		border-radius: 4px;
-		margin: 6px 8px 8px;
+	.audio-player {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		padding: 8px 10px;
+		background: linear-gradient(135deg, #1e1e1e 0%, #171717 100%);
 	}
 
-	.gr-audio {
-		width: 100%;
-		height: 32px;
-		border-radius: 4px;
-		filter: brightness(0.85) contrast(1.1) saturate(0.9);
+	.audio-player-compact {
+		padding: 6px 8px;
+		gap: 6px;
+		flex: 1;
+	}
+
+	.audio-play-btn {
+		width: 28px;
+		height: 28px;
+		border: none;
+		background: #f97316;
+		color: #000;
+		border-radius: 50%;
+		cursor: pointer;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		flex-shrink: 0;
+		transition: all 0.15s;
+	}
+
+	.audio-play-btn:hover {
+		background: #fb923c;
+		transform: scale(1.05);
+	}
+
+	.audio-play-btn svg {
+		width: 14px;
+		height: 14px;
+	}
+
+	.audio-player-compact .audio-play-btn {
+		width: 24px;
+		height: 24px;
+	}
+
+	.audio-player-compact .audio-play-btn svg {
+		width: 12px;
+		height: 12px;
+	}
+
+	.audio-progress {
+		flex: 1;
+		height: 6px;
+		background: #333;
+		border-radius: 3px;
+		cursor: pointer;
+		position: relative;
+		overflow: hidden;
+	}
+
+	.audio-progress:hover {
+		height: 8px;
+	}
+
+	.audio-progress-fill {
+		height: 100%;
+		background: linear-gradient(90deg, #f97316 0%, #fb923c 100%);
+		border-radius: 3px;
+		transition: width 0.1s linear;
+	}
+
+	.audio-time {
+		font-size: 10px;
+		font-family: 'SF Mono', Monaco, monospace;
+		color: #888;
+		min-width: 70px;
+		text-align: right;
+		flex-shrink: 0;
+	}
+
+	.audio-player-compact .audio-time {
+		font-size: 9px;
+		min-width: 60px;
 	}
 
 	.gr-image {
@@ -1486,15 +1653,6 @@
 		background: rgba(34, 197, 94, 0.3);
 	}
 
-	.map-item-audio {
-		flex: 1;
-		min-width: 0;
-	}
-
-	.map-item-audio audio {
-		width: 100%;
-		height: 28px;
-	}
 
 
 	/* Item List Styles */
