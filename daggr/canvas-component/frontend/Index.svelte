@@ -86,9 +86,27 @@
 	let isPanning = $state(false);
 	let startPan = $state({ x: 0, y: 0 });
 
-	// Data from props
-	let nodes = $derived(gradio.props.value?.nodes || []);
-	let edges = $derived(gradio.props.value?.edges || []);
+	// Data from props - keep previous values if new data is empty (prevents UI clearing)
+	let lastValidNodes: GraphNode[] = [];
+	let lastValidEdges: GraphEdge[] = [];
+	
+	let nodes = $derived.by(() => {
+		const newNodes = gradio.props.value?.nodes;
+		if (newNodes && newNodes.length > 0) {
+			lastValidNodes = newNodes;
+			return newNodes;
+		}
+		return lastValidNodes;
+	});
+	
+	let edges = $derived.by(() => {
+		const newEdges = gradio.props.value?.edges;
+		if (newEdges && newEdges.length > 0) {
+			lastValidEdges = newEdges;
+			return newEdges;
+		}
+		return lastValidEdges;
+	});
 
 	// Track input component values (keyed by node.id for correct data flow)
 	let inputValues = $state<Record<string, Record<string, any>>>({});
@@ -377,50 +395,54 @@
 
 	// Process incoming results from backend (streaming)
 	$effect(() => {
-		const data = gradio.props.value;
-		if (!data) return;
-		
-		const runId = data.run_id;
-		const completedNode = data.completed_node;
-		if (!runId || !completedNode) return;
-		
-		const completionKey = `${runId}:${completedNode}`;
-		
-		if (globalProcessedSet.has(completionKey)) return;
-		globalProcessedSet.add(completionKey);
-		
-		if (pendingRunIds[completedNode]) {
-			pendingRunIds[completedNode] = pendingRunIds[completedNode].filter(id => id !== runId);
-		}
-		
-		const executedNodes = runIdToNodes[runId];
-		if (executedNodes) {
-			const allDone = executedNodes.every(n => globalProcessedSet.has(`${runId}:${n}`));
-			if (allDone) {
-				delete runIdToNodes[runId];
-				setTimeout(() => {
-					for (const n of executedNodes) {
-						globalProcessedSet.delete(`${runId}:${n}`);
-					}
-				}, 1000);
+		try {
+			const data = gradio.props.value;
+			if (!data) return;
+			
+			const runId = data.run_id;
+			const completedNode = data.completed_node;
+			if (!runId || !completedNode) return;
+			
+			const completionKey = `${runId}:${completedNode}`;
+			
+			if (globalProcessedSet.has(completionKey)) return;
+			globalProcessedSet.add(completionKey);
+			
+			if (pendingRunIds[completedNode]) {
+				pendingRunIds[completedNode] = pendingRunIds[completedNode].filter(id => id !== runId);
 			}
-		}
-		
-		const node = data.nodes?.find((n: GraphNode) => n.name === completedNode);
-		if (node && node.output_components?.length > 0) {
-			const hasResult = node.output_components.some((c: GradioComponentData) => c.value != null);
-			if (hasResult) {
-				if (!nodeResults[completedNode]) {
-					nodeResults[completedNode] = [];
+			
+			const executedNodes = runIdToNodes[runId];
+			if (executedNodes) {
+				const allDone = executedNodes.every(n => globalProcessedSet.has(`${runId}:${n}`));
+				if (allDone) {
+					delete runIdToNodes[runId];
+					setTimeout(() => {
+						for (const n of executedNodes) {
+							globalProcessedSet.delete(`${runId}:${n}`);
+						}
+					}, 1000);
 				}
-				
-				const resultSnapshot = node.output_components.map((c: GradioComponentData) => ({
-					...c
-				}));
-				
-				nodeResults[completedNode] = [...nodeResults[completedNode], resultSnapshot];
-				selectedResultIndex[completedNode] = nodeResults[completedNode].length - 1;
 			}
+			
+			const node = data.nodes?.find((n: GraphNode) => n.name === completedNode);
+			if (node && node.output_components?.length > 0) {
+				const hasResult = node.output_components.some((c: GradioComponentData) => c.value != null);
+				if (hasResult) {
+					if (!nodeResults[completedNode]) {
+						nodeResults[completedNode] = [];
+					}
+					
+					const resultSnapshot = node.output_components.map((c: GradioComponentData) => ({
+						...c
+					}));
+					
+					nodeResults[completedNode] = [...nodeResults[completedNode], resultSnapshot];
+					selectedResultIndex[completedNode] = nodeResults[completedNode].length - 1;
+				}
+			}
+		} catch (err) {
+			console.error('[daggr] Error processing result:', err);
 		}
 	});
 
