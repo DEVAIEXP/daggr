@@ -3,6 +3,13 @@
 	import { EmbeddedComponent, MapItemsSection, ItemListSection } from './components';
 	import type { GraphNode, GraphEdge, CanvasData, GradioComponentData } from './types';
 
+	interface Sheet {
+		sheet_id: string;
+		name: string;
+		created_at: string;
+		updated_at: string;
+	}
+
 	let canvasEl: HTMLDivElement;
 	let transform = $state({ x: 0, y: 0, scale: 1 });
 	let isPanning = $state(false);
@@ -29,11 +36,22 @@
 	let timerTick = $state(0);
 	let hfUser = $state<{ username: string; fullname: string; avatar_url: string } | null>(null);
 
+	let sheets = $state<Sheet[]>([]);
+	let currentSheetId = $state<string | null>(null);
+	let userId = $state<string | null>(null);
+	let canPersist = $state(false);
+	let isOnSpaces = $state(false);
+	let sheetDropdownOpen = $state(false);
+	let editingSheetName = $state(false);
+	let editSheetNameValue = $state('');
+	let saveDebounceTimer: number | null = null;
+
 	const globalProcessedSet = new Set<string>();
 	let timerInterval: number | null = null;
 
 	let nodes = $derived(graphData?.nodes || []);
 	let edges = $derived(graphData?.edges || []);
+	let currentSheet = $derived(sheets.find(s => s.sheet_id === currentSheetId));
 
 	function startTimer() {
 		if (timerInterval) return;
@@ -69,6 +87,104 @@
 		return 'session_' + Math.random().toString(36).slice(2) + Date.now().toString(36);
 	}
 
+	async function fetchUserInfo() {
+		try {
+			const response = await fetch('/api/user_info');
+			if (response.ok) {
+				const data = await response.json();
+				hfUser = data.hf_user;
+				userId = data.user_id;
+				canPersist = data.can_persist;
+				isOnSpaces = data.is_on_spaces;
+				return data;
+			}
+		} catch (e) {
+			console.log('[daggr] Could not fetch user info');
+		}
+		return null;
+	}
+
+	async function fetchSheets() {
+		if (!canPersist) return;
+		try {
+			const response = await fetch('/api/sheets');
+			if (response.ok) {
+				const data = await response.json();
+				sheets = data.sheets || [];
+			}
+		} catch (e) {
+			console.log('[daggr] Could not fetch sheets');
+		}
+	}
+
+	async function createSheet(name?: string) {
+		if (!canPersist) return;
+		try {
+			const response = await fetch('/api/sheets', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ name })
+			});
+			if (response.ok) {
+				const data = await response.json();
+				const newSheet = data.sheet;
+				sheets = [newSheet, ...sheets];
+				await selectSheet(newSheet.sheet_id);
+			}
+		} catch (e) {
+			console.error('[daggr] Failed to create sheet:', e);
+		}
+	}
+
+	async function renameSheet(sheetId: string, newName: string) {
+		try {
+			const response = await fetch(`/api/sheets/${sheetId}`, {
+				method: 'PATCH',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ name: newName })
+			});
+			if (response.ok) {
+				sheets = sheets.map(s => s.sheet_id === sheetId ? { ...s, name: newName } : s);
+			}
+		} catch (e) {
+			console.error('[daggr] Failed to rename sheet:', e);
+		}
+	}
+
+	async function deleteSheet(sheetId: string) {
+		if (!confirm('Delete this sheet and all its data?')) return;
+		try {
+			const response = await fetch(`/api/sheets/${sheetId}`, { method: 'DELETE' });
+			if (response.ok) {
+				sheets = sheets.filter(s => s.sheet_id !== sheetId);
+				if (currentSheetId === sheetId) {
+					if (sheets.length > 0) {
+						await selectSheet(sheets[0].sheet_id);
+					} else {
+						await createSheet();
+					}
+				}
+			}
+		} catch (e) {
+			console.error('[daggr] Failed to delete sheet:', e);
+		}
+	}
+
+	async function selectSheet(sheetId: string) {
+		currentSheetId = sheetId;
+		nodeResults = {};
+		selectedResultIndex = {};
+		inputValues = {};
+		itemListValues = {};
+		
+		if (ws && wsConnected) {
+			ws.send(JSON.stringify({ action: 'set_sheet', sheet_id: sheetId }));
+			ws.send(JSON.stringify({ action: 'get_graph', sheet_id: sheetId }));
+		}
+		
+		sheetDropdownOpen = false;
+	}
+
 	function connectWebSocket() {
 		if (isConnecting) return;
 		if (reconnectAttempts >= maxReconnectAttempts) {
@@ -96,12 +212,17 @@
 			return;
 		}
 		
-		ws.onopen = () => {
+		ws.onopen = async () => {
 			console.log('[daggr] WebSocket connected');
 			isConnecting = false;
 			wsConnected = true;
 			reconnectAttempts = 0;
-			ws?.send(JSON.stringify({ action: 'get_graph' }));
+			
+			if (canPersist && currentSheetId) {
+				ws?.send(JSON.stringify({ action: 'get_graph', sheet_id: currentSheetId }));
+			} else {
+				ws?.send(JSON.stringify({ action: 'get_graph' }));
+			}
 		};
 		
 		ws.onmessage = (event) => {
@@ -136,6 +257,31 @@
 		console.log('[daggr] received:', data.type, data);
 		if (data.type === 'graph') {
 			graphData = data.data;
+			
+			if (data.data.sheet_id) {
+				currentSheetId = data.data.sheet_id;
+			}
+			
+			if (data.data.persisted_results) {
+				for (const [nodeName, results] of Object.entries(data.data.persisted_results as Record<string, any[]>)) {
+					if (results && results.length > 0) {
+						const node = data.data.nodes?.find((n: GraphNode) => n.name === nodeName);
+						if (node && node.output_components?.length > 0) {
+							nodeResults[nodeName] = results.map((result: any) => {
+								return node.output_components.map((comp: GradioComponentData) => ({
+									...comp,
+									value: result?.[comp.port_name] ?? comp.value
+								}));
+							});
+							selectedResultIndex[nodeName] = nodeResults[nodeName].length - 1;
+						}
+					}
+				}
+			}
+			
+			if (data.data.inputs) {
+				inputValues = data.data.inputs;
+			}
 		} else if (data.type === 'node_started') {
 			const startedNode = data.started_node;
 			if (startedNode) {
@@ -204,12 +350,31 @@
 					}
 				}
 			}
+		} else if (data.type === 'sheet_set') {
+			console.log('[daggr] Sheet set to:', data.sheet_id);
+		} else if (data.type === 'input_saved') {
+			console.log('[daggr] Input saved for:', data.node_id);
 		}
 	}
 
 	onMount(() => {
-		connectWebSocket();
-		fetchHfUser();
+		async function initialize() {
+			await fetchUserInfo();
+			
+			if (canPersist) {
+				await fetchSheets();
+				if (sheets.length === 0) {
+					await createSheet();
+				} else {
+					currentSheetId = sheets[0].sheet_id;
+				}
+			}
+			
+			connectWebSocket();
+		}
+		
+		initialize();
+		
 		return () => {
 			if (reconnectTimer) {
 				clearTimeout(reconnectTimer);
@@ -219,6 +384,10 @@
 				clearInterval(timerInterval);
 				timerInterval = null;
 			}
+			if (saveDebounceTimer) {
+				clearTimeout(saveDebounceTimer);
+				saveDebounceTimer = null;
+			}
 			if (ws) {
 				ws.onclose = null;
 				ws.onerror = null;
@@ -227,20 +396,6 @@
 			}
 		};
 	});
-
-	async function fetchHfUser() {
-		try {
-			const response = await fetch('/api/hf_user');
-			if (response.ok) {
-				const data = await response.json();
-				if (data && data.username) {
-					hfUser = data;
-				}
-			}
-		} catch (e) {
-			console.log('[daggr] Could not fetch HF user info');
-		}
-	}
 
 	function getAncestors(nodeName: string): string[] {
 		const ancestors = new Set<string>();
@@ -262,6 +417,25 @@
 		return Array.from(ancestors);
 	}
 
+	function debounceSaveInput(nodeId: string, portName: string, value: any) {
+		if (!canPersist || !currentSheetId) return;
+		
+		if (saveDebounceTimer) {
+			clearTimeout(saveDebounceTimer);
+		}
+		
+		saveDebounceTimer = window.setTimeout(() => {
+			if (ws && wsConnected) {
+				ws.send(JSON.stringify({
+					action: 'save_input',
+					node_id: nodeId,
+					port_name: portName,
+					value: value
+				}));
+			}
+		}, 500);
+	}
+
 	async function handleInputChange(nodeId: string, portName: string, value: any) {
 		if (!inputValues[nodeId]) {
 			inputValues[nodeId] = {};
@@ -269,8 +443,10 @@
 		if (value instanceof Blob || value instanceof File) {
 			const dataUrl = await blobToDataUrl(value);
 			inputValues[nodeId][portName] = dataUrl;
+			debounceSaveInput(nodeId, portName, dataUrl);
 		} else {
 			inputValues[nodeId][portName] = value;
+			debounceSaveInput(nodeId, portName, value);
 		}
 	}
 
@@ -540,7 +716,8 @@
 				inputs: inputValues,
 				item_list_values: itemListValues,
 				selected_results: selectedResultIndex,
-				run_id: runId
+				run_id: runId,
+				sheet_id: currentSheetId
 			}));
 		}
 	}
@@ -626,6 +803,28 @@
 		}
 		
 		return null;
+	}
+
+	function startEditingSheetName() {
+		if (currentSheet) {
+			editSheetNameValue = currentSheet.name;
+			editingSheetName = true;
+		}
+	}
+
+	function finishEditingSheetName() {
+		if (editingSheetName && currentSheetId && editSheetNameValue.trim()) {
+			renameSheet(currentSheetId, editSheetNameValue.trim());
+		}
+		editingSheetName = false;
+	}
+
+	function handleSheetNameKeydown(e: KeyboardEvent) {
+		if (e.key === 'Enter') {
+			finishEditingSheetName();
+		} else if (e.key === 'Escape') {
+			editingSheetName = false;
+		}
 	}
 </script>
 
@@ -783,6 +982,60 @@
 
 	<div class="title-bar">
 		<span class="title">{graphData?.name || 'daggr'}</span>
+		{#if canPersist && sheets.length > 0}
+			<span class="title-separator">|</span>
+			<div class="sheet-selector">
+				{#if editingSheetName}
+					<input
+						type="text"
+						class="sheet-name-input"
+						bind:value={editSheetNameValue}
+						onblur={finishEditingSheetName}
+						onkeydown={handleSheetNameKeydown}
+						autofocus
+					/>
+				{:else}
+					<button 
+						class="sheet-current"
+						onclick={() => sheetDropdownOpen = !sheetDropdownOpen}
+						ondblclick={startEditingSheetName}
+						title="Double-click to rename"
+					>
+						<span class="sheet-name">{currentSheet?.name || 'Sheet'}</span>
+						<svg class="dropdown-arrow" viewBox="0 0 10 6" fill="currentColor">
+							<path d="M1 1 L5 5 L9 1" stroke="currentColor" stroke-width="1.5" fill="none"/>
+						</svg>
+					</button>
+				{/if}
+				{#if sheetDropdownOpen}
+					<div class="sheet-dropdown">
+						{#each sheets as sheet (sheet.sheet_id)}
+							<div 
+								class="sheet-option"
+								class:active={sheet.sheet_id === currentSheetId}
+							>
+								<button 
+									class="sheet-option-name"
+									onclick={() => selectSheet(sheet.sheet_id)}
+								>
+									{sheet.name}
+								</button>
+								{#if sheets.length > 1}
+									<button 
+										class="sheet-delete"
+										onclick={() => deleteSheet(sheet.sheet_id)}
+										title="Delete sheet"
+									>×</button>
+								{/if}
+							</div>
+						{/each}
+						<button class="sheet-new" onclick={() => createSheet()}>
+							+ New Sheet
+						</button>
+					</div>
+				{/if}
+			</div>
+		{/if}
 	</div>
 
 	{#if hfUser}
@@ -794,6 +1047,10 @@
 			<div class="hf-tooltip">
 				Your Hugging Face token is automatically used for all GradioNode and InferenceNode calls. This enables ZeroGPU quota tracking and access to private Spaces and gated models.
 			</div>
+		</div>
+	{:else if isOnSpaces}
+		<div class="login-prompt">
+			<span>Login to save your work</span>
 		</div>
 	{/if}
 </div>
@@ -852,12 +1109,149 @@
 		border-radius: 8px;
 		padding: 8px 20px;
 		z-index: 100;
+		display: flex;
+		align-items: center;
+		gap: 12px;
 	}
 
 	.title {
 		font-size: 14px;
 		font-weight: 600;
 		color: #f97316;
+	}
+
+	.title-separator {
+		color: rgba(249, 115, 22, 0.3);
+		font-weight: 300;
+	}
+
+	.sheet-selector {
+		position: relative;
+	}
+
+	.sheet-current {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		background: transparent;
+		border: none;
+		color: #aaa;
+		font-size: 13px;
+		font-weight: 500;
+		cursor: pointer;
+		padding: 4px 8px;
+		border-radius: 4px;
+		transition: all 0.15s;
+	}
+
+	.sheet-current:hover {
+		background: rgba(249, 115, 22, 0.1);
+		color: #f97316;
+	}
+
+	.sheet-name {
+		max-width: 150px;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.sheet-name-input {
+		background: rgba(0, 0, 0, 0.3);
+		border: 1px solid rgba(249, 115, 22, 0.4);
+		border-radius: 4px;
+		color: #fff;
+		font-size: 13px;
+		font-weight: 500;
+		padding: 4px 8px;
+		width: 140px;
+		outline: none;
+	}
+
+	.sheet-name-input:focus {
+		border-color: #f97316;
+	}
+
+	.dropdown-arrow {
+		width: 10px;
+		height: 6px;
+		opacity: 0.6;
+	}
+
+	.sheet-dropdown {
+		position: absolute;
+		top: 100%;
+		left: 0;
+		margin-top: 8px;
+		min-width: 180px;
+		background: rgba(25, 25, 25, 0.98);
+		border: 1px solid rgba(249, 115, 22, 0.3);
+		border-radius: 8px;
+		padding: 6px;
+		box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+	}
+
+	.sheet-option {
+		display: flex;
+		align-items: center;
+		border-radius: 4px;
+		overflow: hidden;
+	}
+
+	.sheet-option.active {
+		background: rgba(249, 115, 22, 0.15);
+	}
+
+	.sheet-option-name {
+		flex: 1;
+		background: none;
+		border: none;
+		color: #ccc;
+		font-size: 12px;
+		padding: 8px 10px;
+		text-align: left;
+		cursor: pointer;
+		transition: all 0.15s;
+	}
+
+	.sheet-option-name:hover {
+		color: #fff;
+	}
+
+	.sheet-option.active .sheet-option-name {
+		color: #f97316;
+	}
+
+	.sheet-delete {
+		background: none;
+		border: none;
+		color: #666;
+		font-size: 16px;
+		padding: 6px 10px;
+		cursor: pointer;
+		transition: color 0.15s;
+	}
+
+	.sheet-delete:hover {
+		color: #ef4444;
+	}
+
+	.sheet-new {
+		width: 100%;
+		background: none;
+		border: none;
+		border-top: 1px solid rgba(249, 115, 22, 0.15);
+		color: #888;
+		font-size: 12px;
+		padding: 10px;
+		margin-top: 4px;
+		cursor: pointer;
+		transition: all 0.15s;
+	}
+
+	.sheet-new:hover {
+		color: #f97316;
+		background: rgba(249, 115, 22, 0.1);
 	}
 
 	.hf-user {
@@ -911,6 +1305,19 @@
 	.hf-user:hover .hf-tooltip {
 		opacity: 1;
 		visibility: visible;
+	}
+
+	.login-prompt {
+		position: fixed;
+		top: 16px;
+		right: 16px;
+		background: rgba(20, 20, 20, 0.9);
+		border: 1px solid rgba(249, 115, 22, 0.2);
+		border-radius: 8px;
+		padding: 8px 14px;
+		z-index: 100;
+		font-size: 12px;
+		color: #888;
 	}
 
 	.zoom-controls {
