@@ -97,11 +97,13 @@ class Graph:
         if errors:
             raise ValueError("Invalid port connections:\n  - " + "\n  - ".join(errors))
 
-    def launch(self, host: str = "127.0.0.1", port: int = 7860, **kwargs):
+    def launch(
+        self, host: str = "127.0.0.1", port: int = 7860, share: bool = False, **kwargs
+    ):
         from daggr.server import DaggrServer
 
         server = DaggrServer(self)
-        server.run(host=host, port=port, **kwargs)
+        server.run(host=host, port=port, share=share, **kwargs)
 
     def __repr__(self):
         return f"Graph(name={self.name}, nodes={len(self.nodes)}, edges={len(self._edges)})"

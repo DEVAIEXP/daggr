@@ -892,9 +892,50 @@ class DaggrServer:
             graph_data["error"] = str(e)
             yield graph_data
 
-    def run(self, host: str = "127.0.0.1", port: int = 7860, **kwargs):
+    def run(
+        self, host: str = "127.0.0.1", port: int = 7860, share: bool = False, **kwargs
+    ):
+        import secrets
+        import threading
+
         import uvicorn
 
         self.graph._validate_edges()
-        print(f"\n  daggr running at http://{host}:{port}\n")
-        uvicorn.run(self.app, host=host, port=port, **kwargs)
+
+        if share:
+            server_thread = threading.Thread(
+                target=lambda: uvicorn.run(
+                    self.app, host=host, port=port, log_level="warning", **kwargs
+                ),
+                daemon=True,
+            )
+            server_thread.start()
+
+            import time
+
+            time.sleep(1)
+
+            from gradio.networking import setup_tunnel
+
+            share_token = secrets.token_urlsafe(32)
+            share_url = setup_tunnel(
+                local_host=host,
+                local_port=port,
+                share_token=share_token,
+                share_server_address=None,
+                share_server_tls_certificate=None,
+            )
+            print(f"\n  daggr running at http://{host}:{port}")
+            print(f"  Public URL: {share_url}")
+            print(
+                "\n  This share link expires in 1 week. For permanent hosting, deploy to Hugging Face Spaces.\n"
+            )
+
+            try:
+                while True:
+                    time.sleep(1)
+            except KeyboardInterrupt:
+                print("\nShutting down...")
+        else:
+            print(f"\n  daggr running at http://{host}:{port}\n")
+            uvicorn.run(self.app, host=host, port=port, **kwargs)

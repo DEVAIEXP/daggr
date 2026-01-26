@@ -25,37 +25,18 @@ pip install daggr
 ## Quick Start
 
 ```python
-import gradio as gr
-from daggr import Graph, FnNode, GradioNode
 
-# 1. Define nodes with inputs and outputs
-voice = GradioNode(
-    space_or_url="abidlabs/tts",
-    api_name="/generate_voice_design",
-    inputs={ # input ports
-        "voice_description": gr.Textbox(label="Voice", value="Professional voice..."),  # Creates an input node with a Gradio component
-        "language": "Auto",  # Fixed value (no UI)
-        "text": "Hello world!",
-    },
-    outputs={ # output ports
-        "audio": gr.Audio(label="Generated Voice"),
-    },
-)
-
-def process_audio(audio: str) -> str:
-    return audio  # Your processing logic here
-
-processor = FnNode(
-    fn=process_audio,
-    inputs={"audio": voice.audio},  # Connect to voice node's output
-    outputs={"audio": gr.Audio(label="Processed Audio")},
-)
-
-# 2. Create graph and launch
-graph = Graph(name="Audio Pipeline", nodes=[voice, processor])
-graph.launch()
 ```
 
+## When to (Not) Use Daggr
+
+Use Daggr when you would like to: programmatically write a repeatable AI workflow that involves Gradio apps
+
+**Why not... ComfyUI?**: ComfyUI is a visual node-based interface primarily for Stable Diffusion image generation workflows. daggr takes a Python-first approach where you define workflows in code and the visual canvas is generated automatically—plus it supports any Gradio Space, Hugging Face model, or custom function rather than being limited to image generation pipelines.
+
+**Why not... Airflow?**: Airflow is an enterprise workflow orchestration platform designed for scheduling, monitoring, and managing data pipelines at scale. daggr is built for interactive AI/ML workflows with real-time visual feedback and immediate execution, making it ideal for prototyping, demos, and workflows where you want to inspect intermediate outputs and rerun individual steps on the fly.
+
+**Why not... Gradio?**: Gradio creates web UIs for individual ML models and demos. daggr extends this by enabling DAG-based workflow composition—you can chain multiple Gradio Spaces, custom Python functions, and inference providers together while automatically generating a visual canvas that displays the entire pipeline with inspectable intermediate outputs at each node.
 
 
 
@@ -207,13 +188,15 @@ graph = Graph(name="Podcast Generator", nodes=[host_voice, guest_voice, dialogue
 graph.launch()
 ```
 
-## Comparisons
+## Sharing
 
-**ComfyUI**: ComfyUI is a visual node-based interface primarily for Stable Diffusion image generation workflows. daggr takes a Python-first approach where you define workflows in code and the visual canvas is generated automatically—plus it supports any Gradio Space, Hugging Face model, or custom function rather than being limited to image generation pipelines.
+Create a public URL to share your workflow with others:
 
-**Airflow**: Airflow is an enterprise workflow orchestration platform designed for scheduling, monitoring, and managing data pipelines at scale. daggr is built for interactive AI/ML workflows with real-time visual feedback and immediate execution, making it ideal for prototyping, demos, and workflows where you want to inspect intermediate outputs and rerun individual steps on the fly.
+```python
+graph.launch(share=True)
+```
 
-**Gradio**: Gradio creates web UIs for individual ML models and demos. daggr extends this by enabling DAG-based workflow composition—you can chain multiple Gradio Spaces, custom Python functions, and inference providers together while automatically generating a visual canvas that displays the entire pipeline with inspectable intermediate outputs at each node.
+This generates a temporary public URL (expires in 1 week) using Gradio's tunneling infrastructure.
 
 ## Development
 
