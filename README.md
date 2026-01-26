@@ -15,6 +15,8 @@
 
 https://github.com/user-attachments/assets/2cfe49c0-3118-4570-b2bd-f87c333836b5
 
+> [!WARNING]
+> **Beta Software**: Daggr is in active development. APIs may change between versions, and while we persist workflow state locally, data loss is possible during updates. We recommend not relying on daggr for production-critical workflows yet. Please [report issues](https://github.com/gradio-app/daggr/issues) if you encounter bugs!
 
 ## Installation
 
