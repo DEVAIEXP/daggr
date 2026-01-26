@@ -1047,6 +1047,7 @@
 	</div>
 
 	<div class="zoom-controls">
+		<img src="/daggr-assets/logo_dark.png" alt="daggr" class="daggr-logo" />
 		<button class="zoom-btn" onclick={zoomOut} title="Zoom out">−</button>
 		<span class="zoom-level">{zoomPercent}%</span>
 		<button class="zoom-btn" onclick={zoomIn} title="Zoom in">+</button>
@@ -1405,6 +1406,13 @@
 		border-radius: 8px;
 		padding: 4px;
 		z-index: 100;
+	}
+
+	.daggr-logo {
+		height: 20px;
+		width: auto;
+		margin: 0 6px 0 4px;
+		opacity: 0.9;
 	}
 
 	.zoom-btn {

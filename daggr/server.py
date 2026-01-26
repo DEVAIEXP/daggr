@@ -267,6 +267,15 @@ class DaggrServer:
                 return FileResponse(file_path, media_type=content_type)
             return Response(status_code=404)
 
+        @self.app.get("/daggr-assets/{path:path}")
+        async def serve_daggr_assets(path: str):
+            assets_dir = Path(__file__).parent / "assets"
+            file_path = assets_dir / path
+            if file_path.exists():
+                content_type, _ = mimetypes.guess_type(str(file_path))
+                return FileResponse(file_path, media_type=content_type)
+            return Response(status_code=404)
+
         @self.app.get("/file/{path:path}")
         async def serve_local_file(path: str):
             import tempfile
