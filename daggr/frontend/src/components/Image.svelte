@@ -2,27 +2,43 @@
 	interface Props {
 		label: string;
 		value: any;
+		editable?: boolean;
+		onchange?: (value: any) => void;
 	}
 
-	let { label, value }: Props = $props();
+	let { label, value, editable = true, onchange }: Props = $props();
 
 	let imgEl: HTMLImageElement | null = $state(null);
+	let fileInputEl: HTMLInputElement | null = $state(null);
+	let showWebcam = $state(false);
+	let videoEl: HTMLVideoElement | null = $state(null);
+	let stream: MediaStream | null = $state(null);
 
 	let src = $derived.by(() => {
 		if (!value) return null;
 		if (typeof value === 'string') return value;
 		if (value.url) return value.url;
+		if (value instanceof Blob) return URL.createObjectURL(value);
 		return null;
 	});
 
-	function downloadImage() {
+	async function downloadImage() {
 		if (!src) return;
-		const link = document.createElement('a');
-		link.href = src;
-		link.download = label || 'image';
-		document.body.appendChild(link);
-		link.click();
-		document.body.removeChild(link);
+		try {
+			const response = await fetch(src);
+			const blob = await response.blob();
+			const blobUrl = URL.createObjectURL(blob);
+			const link = document.createElement('a');
+			link.href = blobUrl;
+			const ext = blob.type.split('/')[1] || 'png';
+			link.download = `${label || 'image'}.${ext}`;
+			document.body.appendChild(link);
+			link.click();
+			document.body.removeChild(link);
+			URL.revokeObjectURL(blobUrl);
+		} catch (e) {
+			console.error('Failed to download image:', e);
+		}
 	}
 
 	function openFullscreen() {
@@ -35,13 +51,89 @@
 			(imgEl as any).msRequestFullscreen();
 		}
 	}
+
+	function triggerUpload() {
+		fileInputEl?.click();
+	}
+
+	function handleFileSelect(e: Event) {
+		const target = e.target as HTMLInputElement;
+		const file = target.files?.[0];
+		if (file) {
+			onchange?.(file);
+		}
+		target.value = '';
+	}
+
+	async function startWebcam() {
+		try {
+			stream = await navigator.mediaDevices.getUserMedia({ video: true });
+			showWebcam = true;
+			await new Promise(resolve => setTimeout(resolve, 50));
+			if (videoEl && stream) {
+				videoEl.srcObject = stream;
+				videoEl.play();
+			}
+		} catch (e) {
+			console.error('Failed to access webcam:', e);
+		}
+	}
+
+	function captureFromWebcam() {
+		if (!videoEl) return;
+		const canvas = document.createElement('canvas');
+		canvas.width = videoEl.videoWidth;
+		canvas.height = videoEl.videoHeight;
+		const ctx = canvas.getContext('2d');
+		if (ctx) {
+			ctx.drawImage(videoEl, 0, 0);
+			canvas.toBlob((blob) => {
+				if (blob) {
+					onchange?.(blob);
+				}
+				stopWebcam();
+			}, 'image/png');
+		}
+	}
+
+	function stopWebcam() {
+		if (stream) {
+			stream.getTracks().forEach(track => track.stop());
+			stream = null;
+		}
+		showWebcam = false;
+	}
+
+	function clearImage() {
+		onchange?.(null);
+	}
 </script>
 
 <div class="gr-image-wrap">
+	<input
+		bind:this={fileInputEl}
+		type="file"
+		accept="image/*"
+		style="display: none"
+		onchange={handleFileSelect}
+	/>
+	
 	<div class="gr-header">
 		<span class="gr-label">{label}</span>
-		{#if src}
-			<div class="image-actions">
+		<div class="image-actions">
+			{#if showWebcam}
+				<button class="action-btn capture" onclick={captureFromWebcam} title="Capture photo">
+					<svg viewBox="0 0 24 24" fill="currentColor">
+						<circle cx="12" cy="12" r="10"/>
+					</svg>
+				</button>
+				<button class="action-btn" onclick={stopWebcam} title="Cancel">
+					<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+						<line x1="18" y1="6" x2="6" y2="18"/>
+						<line x1="6" y1="6" x2="18" y2="18"/>
+					</svg>
+				</button>
+			{:else if src}
 				<button class="action-btn" onclick={openFullscreen} title="View fullscreen">
 					<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
 						<path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/>
@@ -54,10 +146,37 @@
 						<line x1="12" y1="15" x2="12" y2="3"/>
 					</svg>
 				</button>
-			</div>
-		{/if}
+				{#if editable}
+					<button class="action-btn" onclick={clearImage} title="Clear image">
+						<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+							<line x1="18" y1="6" x2="6" y2="18"/>
+							<line x1="6" y1="6" x2="18" y2="18"/>
+						</svg>
+					</button>
+				{/if}
+			{:else if editable}
+				<button class="action-btn" onclick={triggerUpload} title="Upload image">
+					<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+						<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+						<polyline points="17 8 12 3 7 8"/>
+						<line x1="12" y1="3" x2="12" y2="15"/>
+					</svg>
+				</button>
+				<button class="action-btn" onclick={startWebcam} title="Capture from webcam">
+					<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+						<path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+						<circle cx="12" cy="13" r="4"/>
+					</svg>
+				</button>
+			{/if}
+		</div>
 	</div>
-	{#if src}
+	
+	{#if showWebcam}
+		<div class="webcam-container">
+			<video bind:this={videoEl} autoplay playsinline muted></video>
+		</div>
+	{:else if src}
 		<div class="image-container">
 			<img bind:this={imgEl} class="gr-image" {src} alt={label} />
 		</div>
@@ -78,13 +197,14 @@
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
-		padding: 6px 10px;
+		padding: 6px;
 	}
 
 	.gr-label {
 		font-size: 10px;
 		font-weight: 400;
 		color: #888;
+		padding-left: 4px;
 	}
 
 	.image-actions {
@@ -120,8 +240,20 @@
 		color: #fff;
 	}
 
+	.action-btn.capture {
+		background: #dc2626;
+	}
+
+	.action-btn.capture svg {
+		color: #fff;
+	}
+
+	.action-btn.capture:hover {
+		background: #ef4444;
+	}
+
 	.image-container {
-		padding: 0 10px 10px;
+		padding: 0 6px 6px;
 	}
 
 	.gr-image {
@@ -132,11 +264,23 @@
 		border-radius: 4px;
 	}
 
+	.webcam-container {
+		padding: 0 6px 6px;
+	}
+
+	.webcam-container video {
+		width: 100%;
+		max-height: 120px;
+		object-fit: contain;
+		border-radius: 4px;
+		background: #000;
+	}
+
 	.gr-empty {
 		font-size: 11px;
 		color: #555;
 		font-style: italic;
-		padding: 10px;
+		padding: 6px;
 		text-align: center;
 	}
 </style>

@@ -102,10 +102,8 @@ class Node(ABC):
 
     def _process_outputs(self, outputs: Dict[str, Any]) -> None:
         for port_name, component in outputs.items():
-            if component is None:
-                continue
             self._output_ports.append(port_name)
-            if _is_gradio_component(component):
+            if component is not None and _is_gradio_component(component):
                 self._output_components[port_name] = component
 
     def __repr__(self):
@@ -365,9 +363,9 @@ class FnNode(Node):
 
     def _process_outputs(self, outputs: Dict[str, Any]) -> None:
         for port_name, component in outputs.items():
+            self._output_ports.append(port_name)
             if component is None:
                 continue
-            self._output_ports.append(port_name)
             if isinstance(component, ItemList):
                 self._item_list_schemas[port_name] = component.schema
             elif _is_gradio_component(component):

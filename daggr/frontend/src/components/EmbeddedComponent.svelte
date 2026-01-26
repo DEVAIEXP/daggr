@@ -1,5 +1,5 @@
 <script lang="ts">
-	import AudioPlayer from './AudioPlayer.svelte';
+	import Audio from './Audio.svelte';
 	import Textbox from './Textbox.svelte';
 	import Image from './Image.svelte';
 	import type { GradioComponentData } from '../types';
@@ -72,19 +72,17 @@
 			<pre class="gr-json">{typeof comp.value === 'string' ? comp.value : JSON.stringify(comp.value, null, 2)}</pre>
 		</div>
 	{:else if comp.component === 'audio'}
-		{@const audioSrc = comp.value?.url || comp.value}
-		<div class="gr-audio-wrap">
-			<span class="gr-label">{comp.props?.label || comp.port_name}</span>
-			{#if audioSrc}
-				<AudioPlayer src={audioSrc} id="{nodeId}_{comp.port_name}" />
-			{:else}
-				<div class="gr-empty">No audio</div>
-			{/if}
-		</div>
+		<Audio
+			label={comp.props?.label || comp.port_name}
+			value={value}
+			id="{nodeId}_{comp.port_name}"
+			onchange={(v) => onchange?.(comp.port_name, v)}
+		/>
 	{:else if comp.component === 'image'}
 		<Image
 			label={comp.props?.label || comp.port_name}
-			value={comp.value}
+			value={value}
+			onchange={(v) => onchange?.(comp.port_name, v)}
 		/>
 	{:else}
 		<div class="gr-fallback">
@@ -207,21 +205,6 @@
 		margin: 0;
 		white-space: pre-wrap;
 		word-break: break-all;
-	}
-
-	.gr-audio-wrap {
-		background: #1a1a1a;
-		border: 1px solid #333;
-		border-radius: 6px;
-		overflow: hidden;
-	}
-
-	.gr-empty {
-		font-size: 11px;
-		color: #555;
-		font-style: italic;
-		padding: 10px;
-		text-align: center;
 	}
 
 	.gr-fallback {

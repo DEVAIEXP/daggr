@@ -24,11 +24,31 @@
 	let selectedResultIndex = $state<Record<string, number>>({});
 	let itemListValues = $state<Record<string, Record<number, Record<string, any>>>>({});
 	let nodeExecutionTimes = $state<Record<string, number>>({});
+	let nodeStartTimes = $state<Record<string, number>>({});
+	let nodeAvgTimes = $state<Record<string, { total: number; count: number }>>({});
+	let timerTick = $state(0);
+	let hfUser = $state<{ username: string; fullname: string; avatar_url: string } | null>(null);
 
 	const globalProcessedSet = new Set<string>();
+	let timerInterval: number | null = null;
 
 	let nodes = $derived(graphData?.nodes || []);
 	let edges = $derived(graphData?.edges || []);
+
+	function startTimer() {
+		if (timerInterval) return;
+		timerInterval = window.setInterval(() => {
+			timerTick++;
+		}, 100);
+	}
+
+	function stopTimerIfNoRunning() {
+		const hasRunning = Object.values(pendingRunIds).some(ids => ids.length > 0);
+		if (!hasRunning && timerInterval) {
+			clearInterval(timerInterval);
+			timerInterval = null;
+		}
+	}
 
 	let runningCounts = $derived.by(() => {
 		const counts: Record<string, number> = {};
@@ -116,6 +136,12 @@
 		console.log('[daggr] received:', data.type, data);
 		if (data.type === 'graph') {
 			graphData = data.data;
+		} else if (data.type === 'node_started') {
+			const startedNode = data.started_node;
+			if (startedNode) {
+				nodeStartTimes[startedNode] = Date.now();
+				startTimer();
+			}
 		} else if (data.type === 'error' && data.error) {
 			console.error('[daggr] server error:', data.error);
 		} else if (data.type === 'node_complete' || data.type === 'error') {
@@ -149,6 +175,15 @@
 			
 			if (completedNode && data.execution_time_ms != null) {
 				nodeExecutionTimes[completedNode] = data.execution_time_ms;
+				delete nodeStartTimes[completedNode];
+				
+				if (!nodeAvgTimes[completedNode]) {
+					nodeAvgTimes[completedNode] = { total: 0, count: 0 };
+				}
+				nodeAvgTimes[completedNode].total += data.execution_time_ms;
+				nodeAvgTimes[completedNode].count++;
+				
+				stopTimerIfNoRunning();
 			}
 			
 			if (data.nodes) {
@@ -174,10 +209,15 @@
 
 	onMount(() => {
 		connectWebSocket();
+		fetchHfUser();
 		return () => {
 			if (reconnectTimer) {
 				clearTimeout(reconnectTimer);
 				reconnectTimer = null;
+			}
+			if (timerInterval) {
+				clearInterval(timerInterval);
+				timerInterval = null;
 			}
 			if (ws) {
 				ws.onclose = null;
@@ -187,6 +227,20 @@
 			}
 		};
 	});
+
+	async function fetchHfUser() {
+		try {
+			const response = await fetch('/api/hf_user');
+			if (response.ok) {
+				const data = await response.json();
+				if (data && data.username) {
+					hfUser = data;
+				}
+			}
+		} catch (e) {
+			console.log('[daggr] Could not fetch HF user info');
+		}
+	}
 
 	function getAncestors(nodeName: string): string[] {
 		const ancestors = new Set<string>();
@@ -208,11 +262,25 @@
 		return Array.from(ancestors);
 	}
 
-	function handleInputChange(nodeId: string, portName: string, value: any) {
+	async function handleInputChange(nodeId: string, portName: string, value: any) {
 		if (!inputValues[nodeId]) {
 			inputValues[nodeId] = {};
 		}
-		inputValues[nodeId][portName] = value;
+		if (value instanceof Blob || value instanceof File) {
+			const dataUrl = await blobToDataUrl(value);
+			inputValues[nodeId][portName] = dataUrl;
+		} else {
+			inputValues[nodeId][portName] = value;
+		}
+	}
+
+	function blobToDataUrl(blob: Blob): Promise<string> {
+		return new Promise((resolve, reject) => {
+			const reader = new FileReader();
+			reader.onload = () => resolve(reader.result as string);
+			reader.onerror = reject;
+			reader.readAsDataURL(blob);
+		});
 	}
 
 	function getComponentValue(node: GraphNode, comp: GradioComponentData): any {
@@ -242,6 +310,16 @@
 			return node.input_components;
 		}
 		return getSelectedResults(node);
+	}
+
+	function hasUserProvidedOutput(node: GraphNode): boolean {
+		if (!node.output_components || node.output_components.length === 0) return false;
+		const nodeInputs = inputValues[node.id];
+		if (!nodeInputs) return false;
+		for (const comp of node.output_components) {
+			if (nodeInputs[comp.port_name] != null) return true;
+		}
+		return false;
 	}
 
 	function getNodeHeight(node: GraphNode): number {
@@ -439,7 +517,10 @@
 		const nodesToMark = nodesToExecute.filter(n => {
 			if (n === nodeName) return true;
 			const results = nodeResults[n];
-			return !results || results.length === 0;
+			if (results && results.length > 0) return false;
+			const node = nodes.find(nd => nd.name === n);
+			if (node && hasUserProvidedOutput(node)) return false;
+			return true;
 		});
 		
 		for (const nodeToMark of nodesToMark) {
@@ -447,6 +528,7 @@
 				pendingRunIds[nodeToMark] = [];
 			}
 			pendingRunIds[nodeToMark] = [...pendingRunIds[nodeToMark], runId];
+			delete nodeExecutionTimes[nodeToMark];
 		}
 		
 		runIdToNodes[runId] = nodesToMark;
@@ -510,9 +592,9 @@
 
 	let zoomPercent = $derived(Math.round(transform.scale * 100));
 
-	function formatExecutionTime(ms: number): string {
+	function formatTime(ms: number): string {
 		if (ms < 1000) {
-			return `${Math.round(ms)}ms`;
+			return `${(ms / 1000).toFixed(1)}s`;
 		} else if (ms < 60000) {
 			return `${(ms / 1000).toFixed(1)}s`;
 		} else {
@@ -520,6 +602,30 @@
 			const secs = ((ms % 60000) / 1000).toFixed(0);
 			return `${mins}m ${secs}s`;
 		}
+	}
+
+	function getNodeTimeDisplay(nodeName: string): { text: string; isRunning: boolean } | null {
+		void timerTick;
+		
+		const isRunning = (pendingRunIds[nodeName]?.length ?? 0) > 0;
+		const startTime = nodeStartTimes[nodeName];
+		const finalTime = nodeExecutionTimes[nodeName];
+		const avgData = nodeAvgTimes[nodeName];
+		const avgTime = avgData ? avgData.total / avgData.count : null;
+		
+		if (isRunning && startTime) {
+			const elapsed = Date.now() - startTime;
+			if (avgTime) {
+				return { text: `${formatTime(elapsed)}/${formatTime(avgTime)}`, isRunning: true };
+			}
+			return { text: formatTime(elapsed), isRunning: true };
+		}
+		
+		if (finalTime != null) {
+			return { text: formatTime(finalTime), isRunning: false };
+		}
+		
+		return null;
 	}
 </script>
 
@@ -558,13 +664,13 @@
 
 		{#each nodes as node (node.id)}
 			{@const componentsToRender = getComponentsToRender(node)}
-			{@const execTime = nodeExecutionTimes[node.name]}
+			{@const timeDisplay = getNodeTimeDisplay(node.name)}
 			<div 
 				class="node"
 				style="left: {node.x}px; top: {node.y}px; width: {NODE_WIDTH}px;"
 			>
-				{#if execTime != null}
-					<div class="exec-time">{formatExecutionTime(execTime)}</div>
+				{#if timeDisplay}
+					<div class="exec-time" class:running={timeDisplay.isRunning}>{timeDisplay.text}</div>
 				{/if}
 				<div class="node-header">
 					<span class="type-badge" style={getBadgeStyle(node.type)}>{node.type}</span>
@@ -678,6 +784,18 @@
 	<div class="title-bar">
 		<span class="title">{graphData?.name || 'daggr'}</span>
 	</div>
+
+	{#if hfUser}
+		<div class="hf-user">
+			{#if hfUser.avatar_url}
+				<img src={hfUser.avatar_url} alt="" class="hf-avatar" />
+			{/if}
+			<span class="hf-username">{hfUser.username}</span>
+			<div class="hf-tooltip">
+				Your Hugging Face token is automatically used for all GradioNode and InferenceNode calls. This enables ZeroGPU quota tracking and access to private Spaces and gated models.
+			</div>
+		</div>
+	{/if}
 </div>
 
 <style>
@@ -740,6 +858,59 @@
 		font-size: 14px;
 		font-weight: 600;
 		color: #f97316;
+	}
+
+	.hf-user {
+		position: fixed;
+		top: 16px;
+		right: 16px;
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		background: rgba(20, 20, 20, 0.9);
+		border: 1px solid rgba(249, 115, 22, 0.2);
+		border-radius: 8px;
+		padding: 6px 12px;
+		z-index: 100;
+		cursor: help;
+	}
+
+	.hf-avatar {
+		width: 22px;
+		height: 22px;
+		border-radius: 50%;
+		object-fit: cover;
+	}
+
+	.hf-username {
+		font-size: 13px;
+		font-weight: 500;
+		color: #ccc;
+	}
+
+	.hf-tooltip {
+		position: absolute;
+		top: 100%;
+		right: 0;
+		margin-top: 8px;
+		width: 280px;
+		background: rgba(30, 30, 30, 0.98);
+		border: 1px solid rgba(249, 115, 22, 0.3);
+		border-radius: 8px;
+		padding: 12px;
+		font-size: 12px;
+		line-height: 1.5;
+		color: #aaa;
+		opacity: 0;
+		visibility: hidden;
+		transition: opacity 0.2s, visibility 0.2s;
+		pointer-events: none;
+		box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+	}
+
+	.hf-user:hover .hf-tooltip {
+		opacity: 1;
+		visibility: visible;
 	}
 
 	.zoom-controls {
@@ -832,6 +1003,10 @@
 		font-weight: 500;
 		color: #666;
 		font-family: 'SF Mono', Monaco, monospace;
+	}
+
+	.exec-time.running {
+		color: #f97316;
 	}
 
 	.node-header {

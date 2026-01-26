@@ -10,7 +10,7 @@ glm_image = GradioNode(
     inputs={
         "prompt": gr.Textbox(  # An input node is created for the prompt
             label="Prompt",
-            value="A logo of a Python library called daggr on a white background",
+            value="A cheetah sprints across the grassy savanna.",
             lines=3,
         ),
         "height": 1024,  # Fixed value (does not appear in the canvas)
@@ -31,7 +31,8 @@ background_remover = GradioNode(
         "image": glm_image.image,  # Connect the output of the GLM Image node to the input of the background remover node
     },
     outputs={
-        "image": gr.Image(label="Final Image"),  # Display output in an Image component
+        "original_image": None,  # Original image is returned but not displayed
+        "final_image": gr.Image(label="Final Image"),  # Transparent bg image is displayed
     },
 )
 

@@ -37,6 +37,10 @@ class DaggrServer:
         async def get_graph():
             return self._build_graph_data()
 
+        @self.app.get("/api/hf_user")
+        async def get_hf_user():
+            return self._get_hf_user_info()
+
         @self.app.post("/api/run/{node_name}")
         async def run_to_node(node_name: str, data: dict):
             session_id = data.get("session_id")
@@ -260,6 +264,9 @@ class DaggrServer:
 
         components = []
         for port_name, comp in node._output_components.items():
+            if comp is None:
+                continue
+
             visible = getattr(comp, "visible", True)
             if visible is False:
                 continue
@@ -275,6 +282,8 @@ class DaggrServer:
                     value = result
                 if comp_type == "audio":
                     value = self._file_to_url(value)
+                if comp_type == "image":
+                    value = self._file_to_url(value)
                 comp_data["value"] = value
             components.append(comp_data)
         return components
@@ -289,6 +298,8 @@ class DaggrServer:
         node = self.graph.nodes[node_name]
         item_output_type = "text"
         for comp in node._output_components.values():
+            if comp is None:
+                continue
             comp_type = self._get_component_type(comp)
             if comp_type == "audio":
                 item_output_type = "audio"
@@ -406,6 +417,23 @@ class DaggrServer:
                 depths[node_name] = 0
 
         return depths
+
+    def _get_hf_user_info(self) -> Optional[dict]:
+        try:
+            from huggingface_hub import get_token, whoami
+
+            token = get_token()
+            if not token:
+                return None
+
+            info = whoami()
+            return {
+                "username": info.get("name"),
+                "fullname": info.get("fullname"),
+                "avatar_url": info.get("avatarUrl"),
+            }
+        except Exception:
+            return None
 
     def _build_graph_data(
         self,
@@ -615,6 +643,8 @@ class DaggrServer:
             item_output_type = "text"
             if is_scattered:
                 for comp in node._output_components.values():
+                    if comp is None:
+                        continue
                     comp_type = self._get_component_type(comp)
                     if comp_type == "audio":
                         item_output_type = "audio"
@@ -635,7 +665,7 @@ class DaggrServer:
                     schema = node._item_list_schemas[port_name]
                     for field_name in schema:
                         output_ports.append(f"{port_name}.{field_name}")
-                else:
+                elif port_name in node._output_components:
                     output_ports.append(port_name)
 
             is_output = self._is_output_node(node_name)
@@ -717,6 +747,62 @@ class DaggrServer:
                     ancestors.add(source)
                     to_visit.append(source)
         return list(ancestors)
+
+    def _get_user_provided_output(
+        self, node, node_id: str, input_values: Dict[str, Any]
+    ) -> Optional[Dict[str, Any]]:
+        if not node._output_components:
+            return None
+
+        node_inputs = input_values.get(node_id, {})
+        if not node_inputs:
+            return None
+
+        result = {}
+        has_user_value = False
+        for port_name, comp in node._output_components.items():
+            if comp is None:
+                continue
+            if port_name in node_inputs:
+                value = node_inputs[port_name]
+                if value is not None:
+                    if isinstance(value, str) and value.startswith("data:"):
+                        value = self._save_data_url_as_gradio_file(value)
+                    result[port_name] = value
+                    has_user_value = True
+
+        return result if has_user_value else None
+
+    def _save_data_url_as_gradio_file(self, data_url: str):
+        import base64
+        import tempfile
+        import uuid
+
+        from daggr.executor import FileValue
+
+        try:
+            header, data = data_url.split(",", 1)
+            mime_type = header.split(":")[1].split(";")[0]
+            ext_map = {
+                "image/png": ".png",
+                "image/jpeg": ".jpg",
+                "image/gif": ".gif",
+                "image/webp": ".webp",
+                "audio/webm": ".webm",
+                "audio/wav": ".wav",
+                "audio/mp3": ".mp3",
+                "audio/mpeg": ".mp3",
+            }
+            ext = ext_map.get(mime_type, ".bin")
+            file_data = base64.b64decode(data)
+            temp_dir = Path(tempfile.gettempdir()) / "daggr_uploads"
+            temp_dir.mkdir(exist_ok=True)
+            file_path = temp_dir / f"{uuid.uuid4()}{ext}"
+            file_path.write_bytes(file_data)
+            return FileValue(str(file_path))
+        except Exception as e:
+            print(f"[ERROR] Failed to save data URL: {e}")
+            return data_url
 
     def _execute_to_node(
         self,
@@ -828,8 +914,17 @@ class DaggrServer:
 
         existing_results = {}
         for node_name in nodes_to_execute:
+            node = self.graph.nodes[node_name]
+            node_id = node_name.replace(" ", "_").replace("-", "_")
+            user_output = self._get_user_provided_output(node, node_id, input_values)
+            if user_output is not None:
+                existing_results[node_name] = user_output
+                self.state.save_result(session_id, node_name, user_output)
+                continue
+
             if node_name == target_node:
                 continue
+
             if node_name in selected_results:
                 cached = self.state.get_result_by_index(
                     session_id, node_name, selected_results[node_name]
@@ -858,6 +953,12 @@ class DaggrServer:
 
                 node_statuses[node_name] = "running"
                 user_input = entry_inputs.get(node_name, {})
+
+                yield {
+                    "type": "node_started",
+                    "started_node": node_name,
+                    "run_id": run_id,
+                }
 
                 import time
 
