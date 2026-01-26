@@ -200,6 +200,49 @@ graph.launch(share=True)
 
 This generates a temporary public URL (expires in 1 week) using Gradio's tunneling infrastructure.
 
+## LLM-Friendly Error Messages
+
+Daggr is designed to be LLM-friendly, making it easy for AI coding assistants to generate and debug workflows. When you (or an LLM) make a mistake, Daggr provides detailed, actionable error messages with suggestions:
+
+**Invalid API endpoint:**
+```
+ValueError: API endpoint '/infer' not found in 'hf-applications/background-removal'. 
+Available endpoints: ['/image', '/text', '/png']. Did you mean '/image'?
+```
+
+**Typo in parameter name:**
+```
+ValueError: Invalid parameter(s) {'promt'} for endpoint '/generate_image' in 
+'hf-applications/Z-Image-Turbo'. Did you mean: 'promt' -> 'prompt'? 
+Valid parameters: {'width', 'height', 'seed', 'prompt'}
+```
+
+**Missing required parameter:**
+```
+ValueError: Missing required parameter(s) {'prompt'} for endpoint '/generate_image' 
+in 'hf-applications/Z-Image-Turbo'. These parameters have no default values.
+```
+
+**Invalid output port reference:**
+```
+ValueError: Output port 'img' not found on node 'Z-Image-Turbo'. 
+Available outputs: image. Did you mean 'image'?
+```
+
+**Invalid function parameter:**
+```
+ValueError: Invalid input(s) {'toppic'} for function 'generate_dialogue'. 
+Did you mean: 'toppic' -> 'topic'? Valid parameters: {'topic', 'host_voice', 'guest_voice'}
+```
+
+**Invalid model name:**
+```
+ValueError: Model 'meta-llama/nonexistent-model' not found on Hugging Face Hub. 
+Please check the model name is correct (format: 'username/model-name').
+```
+
+These errors make it easy for LLMs to understand what went wrong and fix the generated code automatically, enabling a smoother AI-assisted development experience.
+
 ## Development
 
 ```bash

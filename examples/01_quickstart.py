@@ -8,7 +8,11 @@ glm_image = GradioNode(
     "hf-applications/Z-Image-Turbo",
     api_name="/generate_image",
     inputs={
-        "prompt": gr.Textbox(label="Prompt"),  # An input node is created for the prompt
+        "prompt": gr.Textbox(  # An input node is created for the prompt
+            label="Prompt",
+            value="A logo of a Python library called daggr on a white background",
+            lines=3,
+        ),
         "height": 1024,  # Fixed value (does not appear in the canvas)
         "width": 1024,  # Fixed value (does not appear in the canvas)
         "seed": random.random,  # Functions are rerun every time the workflow is run (not shown in the canvas)

@@ -739,12 +739,16 @@ class DaggrServer:
         for node_name in nodes_to_execute:
             node = self.graph.nodes[node_name]
             if node._input_components:
-                node_input_values = input_values.get(node_name, {})
-                if isinstance(node_input_values, dict):
-                    entry_inputs[node_name] = node_input_values
-                else:
-                    first_port = list(node._input_components.keys())[0]
-                    entry_inputs[node_name] = {first_port: node_input_values}
+                node_inputs = {}
+                for port_name in node._input_components:
+                    input_node_name = f"{node_name}__{port_name}"
+                    input_node_id = input_node_name.replace(" ", "_").replace("-", "_")
+                    if input_node_id in input_values:
+                        value = input_values[input_node_id].get("value")
+                        if value is not None:
+                            node_inputs[port_name] = value
+                if node_inputs:
+                    entry_inputs[node_name] = node_inputs
             elif isinstance(node, InteractionNode):
                 value = input_values.get(node_name, "")
                 port = node._input_ports[0] if node._input_ports else "input"
@@ -807,12 +811,16 @@ class DaggrServer:
         for node_name in nodes_to_execute:
             node = self.graph.nodes[node_name]
             if node._input_components:
-                node_input_values = input_values.get(node_name, {})
-                if isinstance(node_input_values, dict):
-                    entry_inputs[node_name] = node_input_values
-                else:
-                    first_port = list(node._input_components.keys())[0]
-                    entry_inputs[node_name] = {first_port: node_input_values}
+                node_inputs = {}
+                for port_name in node._input_components:
+                    input_node_name = f"{node_name}__{port_name}"
+                    input_node_id = input_node_name.replace(" ", "_").replace("-", "_")
+                    if input_node_id in input_values:
+                        value = input_values[input_node_id].get("value")
+                        if value is not None:
+                            node_inputs[port_name] = value
+                if node_inputs:
+                    entry_inputs[node_name] = node_inputs
             elif isinstance(node, InteractionNode):
                 value = input_values.get(node_name, "")
                 port = node._input_ports[0] if node._input_ports else "input"

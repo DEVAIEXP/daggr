@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import difflib
 from typing import Dict, List, Optional, Sequence
 
 import networkx as nx
@@ -7,6 +8,11 @@ import networkx as nx
 from daggr.edge import Edge
 from daggr.node import Node
 from daggr.port import Port
+
+
+def _suggest_similar(invalid: str, valid_options: set) -> Optional[str]:
+    matches = difflib.get_close_matches(invalid, valid_options, n=1, cutoff=0.6)
+    return matches[0] if matches else None
 
 
 class Graph:
@@ -42,7 +48,22 @@ class Graph:
 
     def _create_edges_from_port_connections(self, node: Node) -> None:
         for target_port_name, source_port in node._port_connections.items():
-            self._add_node(source_port.node)
+            source_node = source_port.node
+            source_port_name = source_port.name
+
+            if source_port_name not in source_node._output_ports:
+                available = set(source_node._output_ports)
+                suggestion = _suggest_similar(source_port_name, available)
+                available_str = ", ".join(available) or "(none)"
+                msg = (
+                    f"Output port '{source_port_name}' not found on node "
+                    f"'{source_node._name}'. Available outputs: {available_str}"
+                )
+                if suggestion:
+                    msg += f" Did you mean '{suggestion}'?"
+                raise ValueError(msg)
+
+            self._add_node(source_node)
             target_port = Port(node, target_port_name)
             edge = Edge(source_port, target_port)
             self._add_edge(edge)
@@ -81,18 +102,28 @@ class Graph:
             target_port = edge.target_port
 
             if source_port not in source_node._output_ports:
-                available = ", ".join(source_node._output_ports) or "(none)"
-                errors.append(
-                    f"Output port '{source_port}' not found on node '{source_node._name}'. "
-                    f"Available outputs: {available}"
+                available = set(source_node._output_ports)
+                available_str = ", ".join(available) or "(none)"
+                suggestion = _suggest_similar(source_port, available)
+                msg = (
+                    f"Output port '{source_port}' not found on node "
+                    f"'{source_node._name}'. Available outputs: {available_str}"
                 )
+                if suggestion:
+                    msg += f" Did you mean '{suggestion}'?"
+                errors.append(msg)
 
             if target_port not in target_node._input_ports:
-                available = ", ".join(target_node._input_ports) or "(none)"
-                errors.append(
-                    f"Input port '{target_port}' not found on node '{target_node._name}'. "
-                    f"Available inputs: {available}"
+                available = set(target_node._input_ports)
+                available_str = ", ".join(available) or "(none)"
+                suggestion = _suggest_similar(target_port, available)
+                msg = (
+                    f"Input port '{target_port}' not found on node "
+                    f"'{target_node._name}'. Available inputs: {available_str}"
                 )
+                if suggestion:
+                    msg += f" Did you mean '{suggestion}'?"
+                errors.append(msg)
 
         if errors:
             raise ValueError("Invalid port connections:\n  - " + "\n  - ".join(errors))

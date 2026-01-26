@@ -6,6 +6,12 @@ if TYPE_CHECKING:
     from daggr.graph import Graph
 
 
+class FileValue(str):
+    """A string subclass that marks a value as a file URL/path from Gradio output."""
+
+    pass
+
+
 class SequentialExecutor:
     def __init__(self, graph: Graph):
         self.graph = graph
@@ -98,7 +104,9 @@ class SequentialExecutor:
 
         node = self.graph.nodes[node_name]
 
-        all_inputs = dict(node._fixed_inputs)
+        all_inputs = {}
+        for port_name, value in node._fixed_inputs.items():
+            all_inputs[port_name] = value() if callable(value) else value
         for port_name, component in node._input_components.items():
             if hasattr(component, "value") and component.value is not None:
                 all_inputs[port_name] = component.value
@@ -111,7 +119,9 @@ class SequentialExecutor:
                 if not api_name.startswith("/"):
                     api_name = "/" + api_name
                 call_inputs = {
-                    k: v for k, v in all_inputs.items() if k in node._input_ports
+                    k: self._wrap_file_input(v)
+                    for k, v in all_inputs.items()
+                    if k in node._input_ports
                 }
                 raw_result = client.predict(api_name=api_name, **call_inputs)
                 result = self._map_gradio_result(node, raw_result)
@@ -147,13 +157,20 @@ class SequentialExecutor:
 
         return result
 
+    def _wrap_file_input(self, value: Any) -> Any:
+        if isinstance(value, FileValue):
+            from gradio_client import handle_file
+
+            return handle_file(str(value))
+        return value
+
     def _extract_file_urls(self, data: Any) -> Any:
         from gradio_client.utils import is_file_obj_with_meta, traverse
 
-        def extract_url(file_obj: dict) -> str:
+        def extract_url(file_obj: dict) -> FileValue:
             if "url" in file_obj and file_obj["url"]:
-                return file_obj["url"]
-            return file_obj.get("path", file_obj)
+                return FileValue(file_obj["url"])
+            return FileValue(file_obj.get("path", ""))
 
         return traverse(data, extract_url, is_file_obj_with_meta)
 

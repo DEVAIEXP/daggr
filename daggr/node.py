@@ -1,11 +1,17 @@
 from __future__ import annotations
 
+import difflib
 import inspect
 import warnings
 from abc import ABC
 from typing import Any, Callable, Dict, List, Optional
 
 from daggr.port import ItemList, Port, PortNamespace, is_port
+
+
+def _suggest_similar(invalid: str, valid_options: set) -> Optional[str]:
+    matches = difflib.get_close_matches(invalid, valid_options, n=1, cutoff=0.6)
+    return matches[0] if matches else None
 
 
 def _is_gradio_component(obj: Any) -> bool:
@@ -123,6 +129,9 @@ class GradioNode(Node):
         self._src = space_or_url
         self._api_name = api_name
 
+        if validate:
+            self._validate_space_format()
+
         if not self._name:
             base_name = self._src.split("/")[-1]
             if base_name not in GradioNode._name_counters:
@@ -137,7 +146,15 @@ class GradioNode(Node):
         self._validate_ports()
 
         if validate:
-            self._validate_gradio_api(inputs or {})
+            self._validate_gradio_api(inputs or {}, outputs or {})
+
+    def _validate_space_format(self) -> None:
+        src = self._src
+        if not ("/" in src or src.startswith("http://") or src.startswith("https://")):
+            raise ValueError(
+                f"Invalid space_or_url '{src}'. Expected format: 'username/space-name' "
+                f"or a full URL like 'https://...'"
+            )
 
     def _get_api_info(self) -> dict:
         if self._src in GradioNode._api_cache:
@@ -150,7 +167,9 @@ class GradioNode(Node):
         GradioNode._api_cache[self._src] = api_info
         return api_info
 
-    def _validate_gradio_api(self, inputs: Dict[str, Any]) -> None:
+    def _validate_gradio_api(
+        self, inputs: Dict[str, Any], outputs: Dict[str, Any]
+    ) -> None:
         api_info = self._get_api_info()
 
         api_name = self._api_name or "/predict"
@@ -177,32 +196,74 @@ class GradioNode(Node):
             available = list(named_endpoints.keys())
             if unnamed_endpoints:
                 available.extend([f"/{k}" for k in unnamed_endpoints.keys()])
-            raise ValueError(
+            suggested = _suggest_similar(api_name, set(available))
+            msg = (
                 f"API endpoint '{api_name}' not found in '{self._src}'. "
                 f"Available endpoints: {available}"
             )
+            if suggested:
+                msg += f" Did you mean '{suggested}'?"
+            raise ValueError(msg)
 
-        valid_params = {
-            p.get("parameter_name", p["label"])
-            for p in endpoint_info.get("parameters", [])
-        }
+        params_info = endpoint_info.get("parameters", [])
+        valid_params = {p.get("parameter_name", p["label"]) for p in params_info}
         input_params = set(inputs.keys())
         invalid_params = input_params - valid_params
 
         if invalid_params:
-            raise ValueError(
+            suggestions = {}
+            for inv in invalid_params:
+                suggestion = _suggest_similar(inv, valid_params)
+                if suggestion:
+                    suggestions[inv] = suggestion
+            msg = (
                 f"Invalid parameter(s) {invalid_params} for endpoint '{api_name}' "
-                f"in '{self._src}'. Valid parameters: {valid_params}"
+                f"in '{self._src}'."
             )
+            if suggestions:
+                suggestion_str = ", ".join(
+                    f"'{k}' -> '{v}'" for k, v in suggestions.items()
+                )
+                msg += f" Did you mean: {suggestion_str}?"
+            msg += f" Valid parameters: {valid_params}"
+            raise ValueError(msg)
+
+        required_params = {
+            p.get("parameter_name", p["label"])
+            for p in params_info
+            if not p.get("parameter_has_default", False)
+        }
+        provided_params = set(inputs.keys())
+        missing_required = required_params - provided_params
+
+        if missing_required:
+            raise ValueError(
+                f"Missing required parameter(s) {missing_required} for endpoint "
+                f"'{api_name}' in '{self._src}'. These parameters have no default values."
+            )
+
+        api_returns = endpoint_info.get("returns", [])
+        if outputs and api_returns:
+            num_returns = len(api_returns)
+            num_outputs = len(outputs)
+            if num_outputs > num_returns:
+                warnings.warn(
+                    f"GradioNode '{self._name}' defines {num_outputs} outputs but "
+                    f"endpoint '{api_name}' only returns {num_returns} value(s). "
+                    f"Extra outputs will be None."
+                )
 
 
 class InferenceNode(Node):
+    _model_cache: Dict[str, bool] = {}
+
     def __init__(
         self,
         model: str,
         name: Optional[str] = None,
         inputs: Optional[Dict[str, Any]] = None,
         outputs: Optional[Dict[str, Any]] = None,
+        validate: bool = True,
     ):
         super().__init__(name)
         self._model = model
@@ -222,6 +283,30 @@ class InferenceNode(Node):
 
         self._validate_ports()
 
+        if validate:
+            self._validate_model_exists()
+
+    def _validate_model_exists(self) -> None:
+        if self._model in InferenceNode._model_cache:
+            if not InferenceNode._model_cache[self._model]:
+                raise ValueError(
+                    f"Model '{self._model}' not found on Hugging Face Hub."
+                )
+            return
+
+        from huggingface_hub import model_info
+        from huggingface_hub.utils import RepositoryNotFoundError
+
+        try:
+            model_info(self._model)
+            InferenceNode._model_cache[self._model] = True
+        except RepositoryNotFoundError:
+            InferenceNode._model_cache[self._model] = False
+            raise ValueError(
+                f"Model '{self._model}' not found on Hugging Face Hub. "
+                f"Please check the model name is correct (format: 'username/model-name')."
+            )
+
 
 class FnNode(Node):
     def __init__(
@@ -238,6 +323,7 @@ class FnNode(Node):
             self._name = self._fn.__name__
 
         if inputs:
+            self._validate_fn_inputs(inputs)
             self._process_inputs(inputs)
         else:
             self._discover_signature()
@@ -252,6 +338,30 @@ class FnNode(Node):
     def _discover_signature(self):
         sig = inspect.signature(self._fn)
         self._input_ports = list(sig.parameters.keys())
+
+    def _validate_fn_inputs(self, inputs: Dict[str, Any]) -> None:
+        sig = inspect.signature(self._fn)
+        valid_params = set(sig.parameters.keys())
+        provided_params = set(inputs.keys())
+        invalid_params = provided_params - valid_params
+
+        if invalid_params:
+            suggestions = {}
+            for inv in invalid_params:
+                suggestion = _suggest_similar(inv, valid_params)
+                if suggestion:
+                    suggestions[inv] = suggestion
+
+            msg = (
+                f"Invalid input(s) {invalid_params} for function '{self._fn.__name__}'."
+            )
+            if suggestions:
+                suggestion_str = ", ".join(
+                    f"'{k}' -> '{v}'" for k, v in suggestions.items()
+                )
+                msg += f" Did you mean: {suggestion_str}?"
+            msg += f" Valid parameters: {valid_params}"
+            raise ValueError(msg)
 
     def _process_outputs(self, outputs: Dict[str, Any]) -> None:
         for port_name, component in outputs.items():
