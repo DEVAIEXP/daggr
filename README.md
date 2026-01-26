@@ -200,6 +200,31 @@ graph.launch(share=True)
 
 This generates a temporary public URL (expires in 1 week) using Gradio's tunneling infrastructure.
 
+## Hugging Face Authentication
+
+Daggr automatically uses your local Hugging Face token for both `GradioNode` and `InferenceNode`. This enables:
+
+- **ZeroGPU quota tracking**: Your HF token is sent to Gradio Spaces running on ZeroGPU, so your usage is tracked against your account's quota
+- **Private Spaces access**: Connect to private Gradio Spaces you have access to
+- **Gated models**: Use gated models on Hugging Face that require accepting terms of service
+
+To log in with your Hugging Face account:
+
+```bash
+pip install huggingface_hub
+hf auth login
+```
+
+You'll be prompted to enter your token, which you can find at https://huggingface.co/settings/tokens. 
+
+Once logged in, the token is saved locally and daggr will automatically use it for all `GradioNode` and `InferenceNode` calls—no additional configuration needed.
+
+Alternatively, you can set the `HF_TOKEN` environment variable directly:
+
+```bash
+export HF_TOKEN=hf_xxxxx
+```
+
 ## LLM-Friendly Error Messages
 
 Daggr is designed to be LLM-friendly, making it easy for AI coding assistants to generate and debug workflows. When you (or an LLM) make a mistake, Daggr provides detailed, actionable error messages with suggestions:
