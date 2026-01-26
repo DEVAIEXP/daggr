@@ -38,6 +38,10 @@ dev = [
 
 [tool.hatch.build.targets.wheel]
 packages = ["daggr"]
+artifacts = [
+    "daggr/frontend/dist/",
+    "daggr/assets/",
+]
 exclude = [
     "daggr/canvas-component/",
     "daggr/frontend/node_modules/",

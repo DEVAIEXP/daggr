@@ -1209,14 +1209,21 @@ class DaggrServer:
             yield graph_data
 
     def run(
-        self, host: str = "127.0.0.1", port: int = 7860, share: bool = False, **kwargs
+        self, host: str = "127.0.0.1", port: int = 7860, share: bool | None = None, **kwargs
     ):
         import secrets
         import threading
 
         import uvicorn
+        from gradio.utils import colab_check, ipython_check
 
         self.graph._validate_edges()
+
+        is_colab = colab_check()
+        is_kaggle = os.environ.get("KAGGLE_KERNEL_RUN_TYPE") is not None
+
+        if share is None:
+            share = is_colab or is_kaggle
 
         if share:
             server_thread = threading.Thread(
@@ -1246,6 +1253,10 @@ class DaggrServer:
             print(
                 "\n  This share link expires in 1 week. For permanent hosting, deploy to Hugging Face Spaces.\n"
             )
+
+            if is_colab and ipython_check():
+                from IPython.display import display, HTML
+                display(HTML(f'<a href="{share_url}" target="_blank">Open daggr app in new tab: {share_url}</a>'))
 
             try:
                 while True:
