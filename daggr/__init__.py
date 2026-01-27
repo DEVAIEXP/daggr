@@ -1,3 +1,22 @@
+"""daggr - Build visual, node-based AI pipelines with Gradio Spaces.
+
+daggr lets you create DAG (directed acyclic graph) pipelines that connect
+Gradio Spaces, Hugging Face models, and Python functions into interactive
+applications.
+
+Example:
+    >>> from daggr import Graph, GradioNode, FnNode
+    >>> import gradio as gr
+    >>>
+    >>> tts = GradioNode(
+    ...     "mrfakename/MeloTTS",
+    ...     inputs={"text": gr.Textbox()},
+    ...     outputs={"audio": gr.Audio()},
+    ... )
+    >>> graph = Graph("TTS Demo", nodes=[tts])
+    >>> graph.launch()
+"""
+
 import json
 from pathlib import Path
 

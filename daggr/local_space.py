@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import atexit
 import hashlib
 import json
 import os
@@ -185,7 +186,7 @@ class LocalSpaceManager:
             print(f"  Installing {gradio_pkg}...")
         else:
             gradio_pkg = "gradio"
-            print(f"  Installing gradio (latest)...")
+            print("  Installing gradio (latest)...")
 
         result = subprocess.run(
             [str(pip_path), "install", gradio_pkg],
@@ -199,7 +200,7 @@ class LocalSpaceManager:
 
         if requirements_path.exists():
             print(f"  Installing dependencies from {requirements_path}...")
-            print(f"  (this may take a few minutes)")
+            print("  (this may take a few minutes)")
 
             process = subprocess.Popen(
                 [str(pip_path), "install", "-r", str(requirements_path)],
@@ -227,7 +228,7 @@ class LocalSpaceManager:
             if process.returncode != 0:
                 error_msg = "".join(output_lines)
                 self._log_to_file("pip_install", error_msg)
-                print(f"\n  ❌ Dependency installation failed!")
+                print("\n  ❌ Dependency installation failed!")
                 print(f"  Full log: {self._get_log_path('pip_install')}")
                 raise RuntimeError(
                     f"Failed to install dependencies for '{self.space_id}'.\n"
@@ -240,7 +241,7 @@ class LocalSpaceManager:
             metadata["requirements_hash"] = current_hash
             self._save_metadata(metadata)
 
-        print(f"  Virtual environment ready")
+        print("  Virtual environment ready")
 
     def _launch_app(self) -> str:
         global _running_processes
@@ -267,7 +268,6 @@ class LocalSpaceManager:
             venv_python = self.venv_dir / "Scripts" / "python.exe"
 
         timeout = int(os.environ.get("DAGGR_LOCAL_TIMEOUT", "120"))
-        verbose = os.environ.get("DAGGR_LOCAL_VERBOSE") == "1"
 
         env = os.environ.copy()
         env["GRADIO_SERVER_PORT"] = str(port)
@@ -297,12 +297,12 @@ class LocalSpaceManager:
             if self.process.poll() is None:
                 self.process.terminate()
 
-            print(f"\n  ❌ Space failed to start!")
+            print("\n  ❌ Space failed to start!")
             if error_output:
                 error_lines = error_output.strip().split("\n")
-                relevant_lines = [l for l in error_lines if l.strip()][-10:]
+                relevant_lines = [ln for ln in error_lines if ln.strip()][-10:]
                 if relevant_lines:
-                    print(f"  Last output:")
+                    print("  Last output:")
                     for line in relevant_lines:
                         print(f"    {line}")
 
@@ -387,7 +387,7 @@ class LocalSpaceManager:
                         remaining = self.process.stdout.read()
                         if remaining:
                             output_lines.append(remaining)
-                    print(f"  App crashed during startup")
+                    print("  App crashed during startup")
                     return False, "".join(output_lines)
 
             elapsed = time.time() - start
@@ -465,7 +465,7 @@ def prepare_local_node(node: GradioNode) -> None:
                 f"Error: {e}"
             ) from e
 
-        print(f"  Will fall back to remote API at execution time.\n")
+        print("  Will fall back to remote API at execution time.\n")
 
 
 def get_local_client(node: GradioNode) -> Any:
@@ -491,7 +491,5 @@ def cleanup_local_processes() -> None:
                 proc.kill()
     _running_processes.clear()
 
-
-import atexit
 
 atexit.register(cleanup_local_processes)

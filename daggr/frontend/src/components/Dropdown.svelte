@@ -105,7 +105,7 @@
 					<button
 						class="option"
 						class:selected={value === internalValue}
-						onmousedown|preventDefault={() => handleSelect(internalValue)}
+						onmousedown={(e) => { e.preventDefault(); handleSelect(internalValue); }}
 					>
 						{displayValue}
 					</button>

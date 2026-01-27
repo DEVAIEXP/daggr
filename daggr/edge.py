@@ -1,3 +1,5 @@
+"""Edge module for connecting ports between nodes."""
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -7,6 +9,21 @@ if TYPE_CHECKING:
 
 
 class Edge:
+    """Represents a connection between two ports in a graph.
+
+    Edges connect an output port of one node to an input port of another,
+    defining how data flows through the graph.
+
+    Attributes:
+        source_node: The node providing the output.
+        source_port: Name of the output port.
+        target_node: The node receiving the input.
+        target_port: Name of the input port.
+        is_scattered: True if this edge scatters a list to multiple executions.
+        is_gathered: True if this edge gathers results back into a list.
+        item_key: For scattered edges, the key to extract from each item.
+    """
+
     def __init__(self, source: PortLike, target: PortLike):
         from daggr.port import GatheredPort, ScatteredPort
 

@@ -1,3 +1,9 @@
+"""Port module for node input/output definitions.
+
+Ports are named connection points on nodes. Output ports can be connected
+to input ports to form edges in the graph.
+"""
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
@@ -7,6 +13,16 @@ if TYPE_CHECKING:
 
 
 class Port:
+    """A named connection point on a node.
+
+    Ports represent inputs or outputs of a node. Access them as attributes
+    on a node: `node.port_name`.
+
+    Attributes:
+        node: The node this port belongs to.
+        name: The name of the port.
+    """
+
     def __init__(self, node: Node, name: str):
         self.node = node
         self.name = name
@@ -43,6 +59,12 @@ class Port:
 
 
 class ScatteredPort:
+    """A port that scatters its list output to run downstream nodes per-item.
+
+    Created by accessing `.each` on a port. When connected to a downstream
+    node, that node will be executed once for each item in the list.
+    """
+
     def __init__(self, port: Port, item_key: str | None = None):
         self.port = port
         self.item_key = item_key
@@ -66,6 +88,12 @@ class ScatteredPort:
 
 
 class GatheredPort:
+    """A port that gathers scattered results back into a list.
+
+    Created by calling `.all()` on a port. Collects results from all
+    scattered executions back into a single list.
+    """
+
     def __init__(self, port: Port):
         self.port = port
 
@@ -85,10 +113,17 @@ PortLike = Port | ScatteredPort | GatheredPort
 
 
 def is_port(obj: Any) -> bool:
+    """Check if an object is a Port, ScatteredPort, or GatheredPort."""
     return isinstance(obj, (Port, ScatteredPort, GatheredPort))
 
 
 class PortNamespace:
+    """A namespace for accessing ports that start with underscores.
+
+    Used via `node._inputs` or `node._outputs` to access ports whose names
+    start with underscores (which can't be accessed directly as attributes).
+    """
+
     def __init__(self, node: Node, port_names: list[str]):
         self._node = node
         self._names = set(port_names)

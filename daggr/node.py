@@ -1,18 +1,23 @@
+"""Node types for daggr graphs.
+
+This module defines the various node types that can be used in a daggr graph:
+- Node: Abstract base class for all nodes
+- GradioNode: Wraps a Gradio Space or endpoint
+- InferenceNode: Wraps a Hugging Face Inference API model
+- FnNode: Wraps a Python function
+- InteractionNode: Represents user interaction points
+"""
+
 from __future__ import annotations
 
-import difflib
 import inspect
 import warnings
 from abc import ABC
 from collections.abc import Callable
 from typing import Any
 
+from daggr._utils import suggest_similar
 from daggr.port import ItemList, Port, PortNamespace, is_port
-
-
-def _suggest_similar(invalid: str, valid_options: set) -> str | None:
-    matches = difflib.get_close_matches(invalid, valid_options, n=1, cutoff=0.6)
-    return matches[0] if matches else None
 
 
 def _is_gradio_component(obj: Any) -> bool:
@@ -41,6 +46,18 @@ def _is_gradio_component(obj: Any) -> bool:
 
 
 class Node(ABC):
+    """Abstract base class for all nodes in a daggr graph.
+
+    Nodes represent processing steps in a DAG. Each node has named input and
+    output ports that can be connected to form a data processing pipeline.
+
+    Ports can be accessed as attributes: `node.port_name` returns a Port object.
+
+    Args:
+        name: Optional display name for the node. If not provided, a name will
+            be auto-generated based on the node type.
+    """
+
     _id_counter = 0
 
     def __init__(self, name: str | None = None):
@@ -112,6 +129,32 @@ class Node(ABC):
 
 
 class GradioNode(Node):
+    """A node that wraps a Gradio Space or endpoint.
+
+    GradioNode connects to a Hugging Face Space or any Gradio app and exposes
+    its API as a node in the graph.
+
+    Args:
+        space_or_url: Hugging Face Space ID (e.g., "username/space-name") or
+            a full URL to a Gradio app.
+        api_name: The API endpoint to call (e.g., "/predict"). Defaults to "/predict".
+        name: Optional display name for the node.
+        inputs: Dict mapping input port names to Gradio components, Port connections,
+            or fixed values.
+        outputs: Dict mapping output port names to Gradio components for display.
+        validate: Whether to validate the Space exists and has the specified endpoint.
+        run_locally: If True, clone and run the Space locally instead of using the
+            remote API.
+
+    Example:
+        >>> tts = GradioNode(
+        ...     "mrfakename/MeloTTS",
+        ...     api_name="/synthesize",
+        ...     inputs={"text": gr.Textbox(), "speaker": "EN-US"},
+        ...     outputs={"audio": gr.Audio()},
+        ... )
+    """
+
     _name_counters: dict[str, int] = {}
 
     def __init__(
@@ -216,7 +259,7 @@ class GradioNode(Node):
             available = list(named_endpoints.keys())
             if unnamed_endpoints:
                 available.extend([f"/{k}" for k in unnamed_endpoints.keys()])
-            suggested = _suggest_similar(api_name, set(available))
+            suggested = suggest_similar(api_name, set(available))
             msg = (
                 f"API endpoint '{api_name}' not found in '{self._src}'. "
                 f"Available endpoints: {available}"
@@ -233,7 +276,7 @@ class GradioNode(Node):
         if invalid_params:
             suggestions = {}
             for inv in invalid_params:
-                suggestion = _suggest_similar(inv, valid_params)
+                suggestion = suggest_similar(inv, valid_params)
                 if suggestion:
                     suggestions[inv] = suggestion
             msg = (
@@ -277,6 +320,22 @@ class GradioNode(Node):
 
 
 class InferenceNode(Node):
+    """A node that wraps a Hugging Face Inference API model.
+
+    InferenceNode uses the Hugging Face Inference API to run models without
+    needing to download them locally.
+
+    Args:
+        model: The Hugging Face model ID (e.g., "meta-llama/Llama-2-7b-chat-hf").
+        name: Optional display name for the node.
+        inputs: Dict mapping input port names to values or components.
+        outputs: Dict mapping output port names to components.
+        validate: Whether to validate the model exists on the Hub.
+
+    Example:
+        >>> llm = InferenceNode("meta-llama/Llama-2-7b-chat-hf")
+    """
+
     _model_cache: dict[str, bool] = {}
 
     def __init__(
@@ -331,6 +390,25 @@ class InferenceNode(Node):
 
 
 class FnNode(Node):
+    """A node that wraps a Python function.
+
+    FnNode allows you to use any Python function as a node in the graph.
+    Input ports are automatically discovered from the function signature.
+
+    Args:
+        fn: The Python function to wrap.
+        name: Optional display name. Defaults to the function name.
+        inputs: Optional dict to explicitly define input ports and their
+            connections or UI components.
+        outputs: Optional dict mapping output port names to UI components
+            or ItemList schemas.
+
+    Example:
+        >>> def process_text(text: str) -> dict:
+        ...     return {"result": text.upper()}
+        >>> node = FnNode(process_text)
+    """
+
     def __init__(
         self,
         fn: Callable,
@@ -370,7 +448,7 @@ class FnNode(Node):
         if invalid_params:
             suggestions = {}
             for inv in invalid_params:
-                suggestion = _suggest_similar(inv, valid_params)
+                suggestion = suggest_similar(inv, valid_params)
                 if suggestion:
                     suggestions[inv] = suggestion
 
@@ -397,6 +475,19 @@ class FnNode(Node):
 
 
 class InteractionNode(Node):
+    """A node representing a user interaction point in the graph.
+
+    InteractionNodes pause execution and wait for user input before continuing.
+    They are used for approval steps, selections, or other human-in-the-loop
+    interactions.
+
+    Args:
+        name: Optional display name for the node.
+        interaction_type: Type of interaction (e.g., "generic", "approve", "choose_one").
+        inputs: Dict mapping input port names to components or connections.
+        outputs: Dict mapping output port names to components.
+    """
+
     def __init__(
         self,
         name: str | None = None,

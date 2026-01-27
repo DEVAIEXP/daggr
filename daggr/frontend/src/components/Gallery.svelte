@@ -103,7 +103,7 @@
 
 {#if showPreview && selectedIndex !== null && items[selectedIndex]}
 	<div class="preview-overlay" onclick={closePreview}>
-		<div class="preview-content" onclick|stopPropagation>
+		<div class="preview-content" onclick={(e) => e.stopPropagation()}>
 			<button class="preview-close" onclick={closePreview}>
 				<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
 					<line x1="18" y1="6" x2="6" y2="18"/>

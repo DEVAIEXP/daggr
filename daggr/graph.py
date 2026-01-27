@@ -1,29 +1,44 @@
+"""Graph module for daggr.
+
+A Graph represents a directed acyclic graph (DAG) of nodes that can be
+executed to process data through a pipeline.
+"""
+
 from __future__ import annotations
 
-import difflib
 from collections.abc import Sequence
 
 import networkx as nx
 
+from daggr._utils import suggest_similar
 from daggr.edge import Edge
 from daggr.node import Node
 from daggr.port import Port
 
 
-def _suggest_similar(invalid: str, valid_options: set) -> str | None:
-    matches = difflib.get_close_matches(invalid, valid_options, n=1, cutoff=0.6)
-    return matches[0] if matches else None
-
-
 class Graph:
+    """A directed acyclic graph (DAG) of nodes for data processing.
+
+    A Graph connects nodes together to form a pipeline. Data flows from entry
+    nodes (nodes with no inputs) through the graph to output nodes.
+
+    Example:
+        >>> from daggr import Graph, FnNode
+        >>> def step1(x): return {"out": x * 2}
+        >>> def step2(y): return {"out": y + 1}
+        >>> n1 = FnNode(step1)
+        >>> n2 = FnNode(step2, inputs={"y": n1.out})
+        >>> graph = Graph("My Pipeline", nodes=[n2])
+        >>> graph.launch()
+    """
+
     def __init__(
         self,
         name: str,
         nodes: Sequence[Node] | None = None,
         persist_key: str | bool | None = None,
     ):
-        """
-        Create a new Graph.
+        """Create a new Graph.
 
         Args:
             name: Display name for this graph shown in the UI.
@@ -58,11 +73,33 @@ class Graph:
                 self.add(node)
 
     def add(self, node: Node) -> Graph:
+        """Add a node to the graph.
+
+        Also adds any upstream nodes connected via the node's port connections.
+
+        Args:
+            node: The node to add.
+
+        Returns:
+            self, for method chaining.
+        """
         self._add_node(node)
         self._create_edges_from_port_connections(node)
         return self
 
     def edge(self, source: Port, target: Port) -> Graph:
+        """Create an edge connecting two ports.
+
+        Args:
+            source: The source port (output of a node).
+            target: The target port (input of a node).
+
+        Returns:
+            self, for method chaining.
+
+        Raises:
+            ValueError: If the edge would create a cycle.
+        """
         edge = Edge(source, target)
         self._add_edge(edge)
         return self
@@ -82,7 +119,7 @@ class Graph:
 
             if source_port_name not in source_node._output_ports:
                 available = set(source_node._output_ports)
-                suggestion = _suggest_similar(source_port_name, available)
+                suggestion = suggest_similar(source_port_name, available)
                 available_str = ", ".join(available) or "(none)"
                 msg = (
                     f"Output port '{source_port_name}' not found on node "
@@ -110,6 +147,7 @@ class Graph:
             raise ValueError("Connection would create a cycle in the DAG")
 
     def get_entry_nodes(self) -> list[Node]:
+        """Get all nodes with no incoming edges (entry points of the graph)."""
         entry_nodes = []
         for node_name in self.nodes:
             if self._nx_graph.in_degree(node_name) == 0:
@@ -117,9 +155,11 @@ class Graph:
         return entry_nodes
 
     def get_execution_order(self) -> list[str]:
+        """Get the topologically sorted order of node names for execution."""
         return list(nx.topological_sort(self._nx_graph))
 
     def get_connections(self) -> list[tuple]:
+        """Get all edges as tuples of (source_node, source_port, target_node, target_port)."""
         return [edge.as_tuple() for edge in self._edges]
 
     def _validate_edges(self) -> None:
@@ -133,7 +173,7 @@ class Graph:
             if source_port not in source_node._output_ports:
                 available = set(source_node._output_ports)
                 available_str = ", ".join(available) or "(none)"
-                suggestion = _suggest_similar(source_port, available)
+                suggestion = suggest_similar(source_port, available)
                 msg = (
                     f"Output port '{source_port}' not found on node "
                     f"'{source_node._name}'. Available outputs: {available_str}"
@@ -145,7 +185,7 @@ class Graph:
             if target_port not in target_node._input_ports:
                 available = set(target_node._input_ports)
                 available_str = ", ".join(available) or "(none)"
-                suggestion = _suggest_similar(target_port, available)
+                suggestion = suggest_similar(target_port, available)
                 msg = (
                     f"Input port '{target_port}' not found on node "
                     f"'{target_node._name}'. Available inputs: {available_str}"
@@ -164,6 +204,18 @@ class Graph:
         share: bool | None = None,
         **kwargs,
     ):
+        """Launch the graph as an interactive web application.
+
+        Starts a web server that displays the graph and allows users to
+        execute nodes and view results.
+
+        Args:
+            host: Host to bind to. Defaults to "127.0.0.1".
+            port: Port to bind to. Defaults to 7860.
+            share: If True, create a public share link. Defaults to True in
+                Colab/Kaggle environments, False otherwise.
+            **kwargs: Additional arguments passed to uvicorn.
+        """
         from daggr.server import DaggrServer
 
         self._prepare_local_nodes()
