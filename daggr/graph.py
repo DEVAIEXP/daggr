@@ -202,6 +202,7 @@ class Graph:
         host: str = "127.0.0.1",
         port: int = 7860,
         share: bool | None = None,
+        open_browser: bool = True,
         **kwargs,
     ):
         """Launch the graph as an interactive web application.
@@ -214,20 +215,26 @@ class Graph:
             port: Port to bind to. Defaults to 7860.
             share: If True, create a public share link. Defaults to True in
                 Colab/Kaggle environments, False otherwise.
+            open_browser: If True, automatically open the app in the default
+                web browser. Defaults to True.
             **kwargs: Additional arguments passed to uvicorn.
         """
         from daggr.server import DaggrServer
 
         self._prepare_local_nodes()
         server = DaggrServer(self)
-        server.run(host=host, port=port, share=share, **kwargs)
+        server.run(host=host, port=port, share=share, open_browser=open_browser, **kwargs)
 
     def _prepare_local_nodes(self) -> None:
         from daggr.local_space import prepare_local_node
-        from daggr.node import GradioNode
+        from daggr.node import ChoiceNode, GradioNode
 
         for node in self.nodes.values():
-            if isinstance(node, GradioNode) and node._run_locally:
+            if isinstance(node, ChoiceNode):
+                for variant in node._variants:
+                    if isinstance(variant, GradioNode) and variant._run_locally:
+                        prepare_local_node(variant)
+            elif isinstance(node, GradioNode) and node._run_locally:
                 prepare_local_node(node)
 
     def __repr__(self):

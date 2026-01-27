@@ -9,7 +9,7 @@ from pydub import AudioSegment
 from daggr import FnNode, GradioNode, Graph, ItemList
 
 host_voice = GradioNode(
-    space_or_url="abidlabs/tts",  # Currently mocked. But this would be a call to e.g. Qwen/Qwen3-TTS
+    space_or_url="Qwen/Qwen3-TTS",  # Currently mocked. But this would be a call to e.g. Qwen/Qwen3-TTS
     api_name="/generate_voice_design",
     inputs={
         "voice_description": gr.Textbox(
@@ -17,14 +17,14 @@ host_voice = GradioNode(
             value="Deep British voice that is very professional and authoritative...",
             lines=3,
         ),
-        "language": "Auto",
+        "language": "English",
         "text": "Hi! I'm the host of podcast. It's going to be a great episode!",
     },
     outputs={
         "audio": gr.Audio(label="Host Voice"),
-        "status": gr.Text(visible=False),
+        "status": None,
     },
-)
+) 
 
 
 guest_voice = GradioNode(
@@ -129,7 +129,7 @@ full_audio = FnNode(
 )
 
 graph = Graph(
-    name="Mock Podcast Generator",
+    name="Complete Podcast Generator",
     nodes=[host_voice, guest_voice, dialogue, samples, full_audio],
 )
 

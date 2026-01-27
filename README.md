@@ -76,7 +76,7 @@ graph = Graph(
 graph.launch()
 ```
 
-Run `python app.py` to start the Python file and you should see a Daggr app like this that you can use to generate images with a transparent background!
+Run `daggr app.py` to start the app with hot reloading (or `python app.py` for standard execution). You should see a Daggr app like this that you can use to generate images with a transparent background!
 
 <img width="1462" height="508" alt="Screenshot 2026-01-26 at 1 01 58 PM" src="https://github.com/user-attachments/assets/b751abd8-e143-4882-817b-036fb66a6d92" />
 
@@ -116,9 +116,122 @@ Each node has **input ports** and **output ports**, which correspond to the node
 
 ### Node Types
 
-- **`GradioNode`**: Calls a Gradio Space API endpoint
-- **`FnNode`**: Runs a Python function
-- **`InferenceNode`**: Calls a model via [Hugging Face Inference Providers](https://huggingface.co/docs/inference-providers/en/index)
+#### `GradioNode`
+
+Calls a Gradio Space API endpoint. Use this to connect to any Gradio app on Hugging Face Spaces or running locally.
+
+```python
+from daggr import GradioNode
+import gradio as gr
+
+image_gen = GradioNode(
+    space_or_url="black-forest-labs/FLUX.1-schnell",  # HF Space ID or URL
+    api_name="/infer",                                 # API endpoint name
+    inputs={
+        "prompt": gr.Textbox(label="Prompt"),          # Creates UI input
+        "seed": 42,                                    # Fixed value
+        "width": 1024,
+        "height": 1024,
+    },
+    outputs={
+        "image": gr.Image(label="Generated Image"),   # Display in node card
+    },
+)
+```
+
+**Finding the right inputs:** To find what parameters a GradioNode expects, go to the Gradio Space and click "Use via API" at the bottom of the page. This shows you the API endpoints and their parameters. For example, if the API page shows:
+
+```python
+from gradio_client import Client
+
+client = Client("black-forest-labs/FLUX.1-schnell")
+result = client.predict(
+    prompt="Hello!!",
+    seed=0,
+    randomize_seed=True,
+    width=1024,
+    height=1024,
+    num_inference_steps=4,
+    api_name="/infer"
+)
+```
+
+Then your GradioNode inputs should use the same parameter names: `prompt`, `seed`, `randomize_seed`, `width`, `height`, `num_inference_steps`.
+
+**Outputs:** Output port names can be anything you choose—they simply map to the return values of the API endpoint in order. If an endpoint returns `(image, seed)`, you might define:
+
+```python
+outputs={
+    "generated_image": gr.Image(),  # Maps to first return value
+    "used_seed": gr.Number(),       # Maps to second return value
+}
+```
+
+#### `FnNode`
+
+Runs a Python function. Input ports are automatically discovered from the function signature.
+
+```python
+from daggr import FnNode
+import gradio as gr
+
+def summarize(text: str, max_words: int = 100) -> str:
+    # Your summarization logic here
+    words = text.split()[:max_words]
+    return " ".join(words) + "..."
+
+summarizer = FnNode(
+    fn=summarize,
+    inputs={
+        "text": gr.Textbox(label="Text to Summarize", lines=5),
+        "max_words": gr.Slider(minimum=10, maximum=500, value=100, label="Max Words"),
+    },
+    outputs={
+        "summary": gr.Textbox(label="Summary"),
+    },
+)
+```
+
+**Inputs:** Keys in the `inputs` dict must match the function's parameter names. If you don't specify an input, it uses the function's default value (if available).
+
+**Outputs:** For single return values, use any name you like. For multiple return values, the output names map to return values in order:
+
+```python
+def process(text: str) -> tuple[str, int]:
+    return text.upper(), len(text)
+
+node = FnNode(
+    fn=process,
+    inputs={"text": gr.Textbox()},
+    outputs={
+        "uppercase": gr.Textbox(),  # First return value
+        "length": gr.Number(),       # Second return value
+    },
+)
+```
+
+#### `InferenceNode`
+
+Calls a model via [Hugging Face Inference Providers](https://huggingface.co/docs/inference-providers/en/index). This lets you use models hosted on the Hugging Face Hub without downloading them.
+
+```python
+from daggr import InferenceNode
+import gradio as gr
+
+llm = InferenceNode(
+    model="meta-llama/Llama-3.1-8B-Instruct",
+    inputs={
+        "prompt": gr.Textbox(label="Prompt", lines=3),
+    },
+    outputs={
+        "response": gr.Textbox(label="Response"),
+    },
+)
+```
+
+**Inputs:** The expected inputs depend on the model's task type. For text generation models, use `prompt`. For other tasks, check the model's documentation on the Hub.
+
+**Outputs:** Like other nodes, output names are arbitrary and map to return values in order.
 
 ### Input Types
 
@@ -162,6 +275,45 @@ final = FnNode(
     outputs={"audio": gr.Audio()},
 )
 ```
+
+### Choice Nodes
+
+Sometimes you want to offer multiple alternatives for the same step in your workflow—for example, two different TTS providers or image generators. Use the `|` operator to create a **choice node** that lets users switch between variants in the UI:
+
+```python
+host_voice = GradioNode(
+    space_or_url="abidlabs/tts",
+    api_name="/generate_voice_design",
+    inputs={
+        "voice_description": gr.Textbox(label="Host Voice"),
+        "language": "Auto",
+        "text": "Hi! I'm the host!",
+    },
+    outputs={"audio": gr.Audio(label="Host Voice")},
+) | GradioNode(
+    space_or_url="mrfakename/E2-F5-TTS",
+    api_name="/basic_tts",
+    inputs={
+        "ref_audio_input": gr.Audio(label="Reference Audio"),
+        "gen_text_input": gr.Textbox(label="Text to Generate"),
+    },
+    outputs={"audio": gr.Audio(label="Host Voice")},
+)
+
+# Downstream nodes connect to host_voice.audio regardless of which variant is selected
+dialogue = FnNode(
+    fn=generate_dialogue,
+    inputs={"host_voice": host_voice.audio, ...},
+    ...
+)
+```
+
+In the canvas, choice nodes display an accordion UI where you can:
+- See all available variants
+- Click to select which variant to use
+- View the selected variant's input components
+
+The selected variant is persisted per sheet, so your choice is remembered across page refreshes. All variants must have the same output ports (so downstream connections work regardless of selection), but they can have different input ports.
 
 ## Putting It Together: A Mock Podcast Generator
 

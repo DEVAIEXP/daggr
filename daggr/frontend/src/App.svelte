@@ -30,6 +30,7 @@
 	let nodeResults = $state<Record<string, any[]>>({});
 	let selectedResultIndex = $state<Record<string, number>>({});
 	let itemListValues = $state<Record<string, Record<number, Record<string, any>>>>({});
+	let selectedVariants = $state<Record<string, number>>({});
 	let nodeExecutionTimes = $state<Record<string, number>>({});
 	let nodeStartTimes = $state<Record<string, number>>({});
 	let nodeAvgTimes = $state<Record<string, { total: number; count: number }>>({});
@@ -178,6 +179,7 @@
 		selectedResultIndex = {};
 		inputValues = {};
 		itemListValues = {};
+		selectedVariants = {};
 		pendingRunIds = {};
 		nodeStartTimes = {};
 		nodeExecutionTimes = {};
@@ -298,6 +300,12 @@
 			
 			if (data.data.inputs) {
 				inputValues = data.data.inputs;
+				for (const [nodeId, nodeInputs] of Object.entries(inputValues)) {
+					const variant = (nodeInputs as Record<string, any>)['_selected_variant'];
+					if (variant !== undefined) {
+						selectedVariants[nodeId] = variant;
+					}
+				}
 			}
 			
 			if (data.data.transform) {
@@ -537,6 +545,29 @@
 		const node = nodes.find(n => n.id === nodeId);
 		const item = node?.item_list_items?.find(i => i.index === itemIndex);
 		return item?.fields?.[fieldName] ?? '';
+	}
+
+	function handleVariantSelect(nodeId: string, variantIndex: number) {
+		selectedVariants[nodeId] = variantIndex;
+		if (!inputValues[nodeId]) {
+			inputValues[nodeId] = {};
+		}
+		inputValues[nodeId]['_selected_variant'] = variantIndex;
+		
+		if (ws && wsConnected) {
+			ws.send(JSON.stringify({
+				action: 'save_variant_selection',
+				node_id: nodeId,
+				variant_index: variantIndex
+			}));
+		}
+	}
+
+	function getSelectedVariant(node: GraphNode): number {
+		if (selectedVariants[node.id] !== undefined) {
+			return selectedVariants[node.id];
+		}
+		return node.selected_variant ?? 0;
 	}
 
 	function getComponentsToRender(node: GraphNode): GradioComponentData[] {
@@ -794,6 +825,7 @@
 			'MAP': '#a855f7',
 			'GRADIO': '#ea580c',
 			'MODEL': '#22c55e',
+			'CHOICE': '#8b5cf6',
 		};
 		return `background: ${colors[type] || '#666'};`;
 	}
@@ -992,6 +1024,40 @@
 					<div class="node-error">
 						<div class="node-error-label">Error</div>
 						<div class="node-error-message">{nodeErrors[node.name]}</div>
+					</div>
+				{:else if node.variants && node.variants.length > 0}
+					{@const currentVariantIdx = getSelectedVariant(node)}
+					<div class="variants-accordion">
+						{#each node.variants as variant, idx (idx)}
+							{@const isSelected = idx === currentVariantIdx}
+							<div 
+								class="variant-card"
+								class:selected={isSelected}
+								onclick={() => handleVariantSelect(node.id, idx)}
+								role="button"
+								tabindex="0"
+							>
+								<div class="variant-header">
+									<span class="variant-radio" class:checked={isSelected}>
+										{#if isSelected}●{:else}○{/if}
+									</span>
+									<span class="variant-name">{variant.name}</span>
+								</div>
+								{#if isSelected && variant.input_components.length > 0}
+									<div class="variant-inputs">
+										{#each variant.input_components as comp (comp.port_name)}
+											<EmbeddedComponent
+												{comp}
+												nodeId={node.id}
+												isInputNode={true}
+												value={inputValues[node.id]?.[`variant_${idx}_${comp.port_name}`] ?? comp.value ?? ''}
+												onchange={(portName, value) => handleInputChange(node.id, `variant_${idx}_${portName}`, value)}
+											/>
+										{/each}
+									</div>
+								{/if}
+							</div>
+						{/each}
 					</div>
 				{:else if componentsToRender.length > 0}
 					<div class="embedded-components">
@@ -1677,6 +1743,65 @@
 		border-top: 1px solid rgba(249, 115, 22, 0.08);
 		max-height: 200px;
 		overflow-y: auto;
+	}
+
+	.variants-accordion {
+		border-top: 1px solid rgba(249, 115, 22, 0.08);
+		max-height: 350px;
+		overflow-y: auto;
+	}
+
+	.variant-card {
+		border-bottom: 1px solid rgba(249, 115, 22, 0.08);
+		cursor: pointer;
+		transition: background 0.15s;
+	}
+
+	.variant-card:last-child {
+		border-bottom: none;
+	}
+
+	.variant-card:hover {
+		background: rgba(249, 115, 22, 0.03);
+	}
+
+	.variant-card.selected {
+		background: rgba(249, 115, 22, 0.06);
+	}
+
+	.variant-header {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		padding: 10px 12px;
+	}
+
+	.variant-radio {
+		font-size: 12px;
+		color: #f97316;
+		width: 14px;
+		flex-shrink: 0;
+	}
+
+	.variant-radio.checked {
+		font-weight: 700;
+	}
+
+	.variant-name {
+		font-size: 11px;
+		font-weight: 500;
+		color: #aaa;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.variant-card.selected .variant-name {
+		color: #f97316;
+	}
+
+	.variant-inputs {
+		padding: 0 12px 10px 34px;
 	}
 
 	.result-selector {

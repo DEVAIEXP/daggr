@@ -81,6 +81,19 @@ class Node(ABC):
         base = ["_name", "_inputs", "_outputs", "_input_ports", "_output_ports"]
         return base + self._input_ports + self._output_ports
 
+    def __or__(self, other: Node) -> ChoiceNode:
+        """Combine two nodes as alternatives using the | operator.
+
+        Returns a ChoiceNode that lets users pick which variant to run.
+
+        Example:
+            >>> tts = GradioNode("space1/tts", ...) | GradioNode("space2/tts", ...)
+            >>> # tts.audio works regardless of which variant is selected
+        """
+        if isinstance(other, ChoiceNode):
+            return ChoiceNode([self] + other._variants, name=self._name)
+        return ChoiceNode([self, other], name=self._name)
+
     @property
     def _inputs(self) -> PortNamespace:
         return PortNamespace(self, self._input_ports)
@@ -126,6 +139,76 @@ class Node(ABC):
 
     def __repr__(self):
         return f"{self.__class__.__name__}(name={self._name})"
+
+
+class ChoiceNode(Node):
+    """A node that wraps multiple alternative nodes.
+
+    ChoiceNode allows users to select which variant to run from a set of
+    alternatives. Created using the | operator between nodes.
+
+    The output ports are the union of all variants' output ports, so downstream
+    nodes can connect to any output that exists in at least one variant.
+
+    Args:
+        variants: List of Node objects that serve as alternatives.
+        name: Optional display name. Defaults to the first variant's name.
+
+    Example:
+        >>> tts = GradioNode("space1/tts", ...) | GradioNode("space2/tts", ...)
+        >>> # tts is a ChoiceNode with two variants
+        >>> # tts.audio works regardless of which variant is selected
+    """
+
+    def __init__(
+        self,
+        variants: list[Node],
+        name: str | None = None,
+    ):
+        if not variants:
+            raise ValueError("ChoiceNode requires at least one variant")
+
+        super().__init__(name)
+        self._variants = variants
+        self._selected_variant = 0
+
+        if not self._name:
+            self._name = variants[0]._name
+
+        self._output_ports = self._compute_union_output_ports()
+        self._output_components = self._compute_union_output_components()
+
+        for variant in variants:
+            for port_name, port in variant._port_connections.items():
+                if port_name not in self._port_connections:
+                    self._port_connections[port_name] = port
+
+    def _compute_union_output_ports(self) -> list[str]:
+        seen = set()
+        ports = []
+        for variant in self._variants:
+            for port in variant._output_ports:
+                if port not in seen:
+                    seen.add(port)
+                    ports.append(port)
+        return ports
+
+    def _compute_union_output_components(self) -> dict[str, Any]:
+        components = {}
+        for variant in self._variants:
+            for port_name, comp in variant._output_components.items():
+                if port_name not in components:
+                    components[port_name] = comp
+        return components
+
+    def __or__(self, other: Node) -> ChoiceNode:
+        if isinstance(other, ChoiceNode):
+            return ChoiceNode(self._variants + other._variants, name=self._name)
+        return ChoiceNode(self._variants + [other], name=self._name)
+
+    def __repr__(self):
+        variant_names = [v._name for v in self._variants]
+        return f"ChoiceNode(name={self._name}, variants={variant_names})"
 
 
 class GradioNode(Node):

@@ -18,36 +18,49 @@ class SequentialExecutor:
         self.clients: dict[str, Any] = {}
         self.results: dict[str, Any] = {}
         self.scattered_results: dict[str, list[Any]] = {}
+        self.selected_variants: dict[str, int] = {}
 
-    def _get_client(self, node_name: str):
-        from daggr.node import GradioNode
-
-        node = self.graph.nodes[node_name]
-        if not isinstance(node, GradioNode):
-            return None
-
-        if node_name in self.clients:
-            return self.clients[node_name]
-
-        if node._run_locally:
-            from daggr.local_space import get_local_client
-
-            client = get_local_client(node)
-            if client is not None:
-                self.clients[node_name] = client
-                return client
-
+    def _get_client_for_gradio_node(self, gradio_node, cache_key: str):
         from daggr import _client_cache
 
-        client = _client_cache.get_client(node._src)
+        if cache_key in self.clients:
+            return self.clients[cache_key]
+
+        if gradio_node._run_locally:
+            from daggr.local_space import get_local_client
+
+            client = get_local_client(gradio_node)
+            if client is not None:
+                self.clients[cache_key] = client
+                return client
+
+        client = _client_cache.get_client(gradio_node._src)
         if client is None:
             from gradio_client import Client
 
-            client = Client(node._src, download_files=False, verbose=False)
-            _client_cache.set_client(node._src, client)
+            client = Client(gradio_node._src, download_files=False, verbose=False)
+            _client_cache.set_client(gradio_node._src, client)
 
-        self.clients[node_name] = client
+        self.clients[cache_key] = client
         return client
+
+    def _get_client(self, node_name: str):
+        from daggr.node import ChoiceNode, GradioNode
+
+        node = self.graph.nodes[node_name]
+
+        if isinstance(node, ChoiceNode):
+            variant_idx = self.selected_variants.get(node_name, 0)
+            variant = node._variants[variant_idx]
+            if isinstance(variant, GradioNode):
+                cache_key = f"{node_name}__variant_{variant_idx}"
+                return self._get_client_for_gradio_node(variant, cache_key)
+            return None
+
+        if not isinstance(node, GradioNode):
+            return None
+
+        return self._get_client_for_gradio_node(node, node_name)
 
     def _get_scattered_input_edges(self, node_name: str) -> list:
         scattered = []
@@ -119,9 +132,20 @@ class SequentialExecutor:
         return inputs
 
     def _execute_single_node(self, node_name: str, inputs: dict[str, Any]) -> Any:
-        from daggr.node import FnNode, GradioNode, InferenceNode, InteractionNode
+        from daggr.node import (
+            ChoiceNode,
+            FnNode,
+            GradioNode,
+            InferenceNode,
+            InteractionNode,
+        )
 
         node = self.graph.nodes[node_name]
+
+        if isinstance(node, ChoiceNode):
+            variant_idx = self.selected_variants.get(node_name, 0)
+            variant = node._variants[variant_idx]
+            return self._execute_variant_node(node_name, variant, inputs)
 
         all_inputs = {}
         for port_name, value in node._fixed_inputs.items():
@@ -170,6 +194,58 @@ class SequentialExecutor:
                 "input",
                 all_inputs.get(node._input_ports[0]) if node._input_ports else None,
             )
+
+        else:
+            result = None
+
+        return result
+
+    def _execute_variant_node(
+        self, node_name: str, variant, inputs: dict[str, Any]
+    ) -> Any:
+        from daggr.node import FnNode, GradioNode, InferenceNode
+
+        all_inputs = {}
+        for port_name, value in variant._fixed_inputs.items():
+            all_inputs[port_name] = value() if callable(value) else value
+        for port_name, component in variant._input_components.items():
+            if hasattr(component, "value") and component.value is not None:
+                all_inputs[port_name] = component.value
+        all_inputs.update(inputs)
+
+        if isinstance(variant, GradioNode):
+            client = self._get_client(node_name)
+            if client:
+                api_name = variant._api_name or "/predict"
+                if not api_name.startswith("/"):
+                    api_name = "/" + api_name
+                call_inputs = {
+                    k: self._wrap_file_input(v)
+                    for k, v in all_inputs.items()
+                    if k in variant._input_ports
+                }
+                raw_result = client.predict(api_name=api_name, **call_inputs)
+                result = self._map_gradio_result(variant, raw_result)
+            else:
+                result = None
+
+        elif isinstance(variant, FnNode):
+            fn_kwargs = {}
+            for port_name in variant._input_ports:
+                if port_name in all_inputs:
+                    fn_kwargs[port_name] = all_inputs[port_name]
+            raw_result = variant._fn(**fn_kwargs)
+            result = self._map_fn_result(variant, raw_result)
+
+        elif isinstance(variant, InferenceNode):
+            from huggingface_hub import InferenceClient
+
+            client = InferenceClient(model=variant._model)
+            input_value = all_inputs.get(
+                "input",
+                all_inputs.get(variant._input_ports[0]) if variant._input_ports else None,
+            )
+            result = client.text_generation(input_value) if input_value else None
 
         else:
             result = None

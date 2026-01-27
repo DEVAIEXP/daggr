@@ -24,6 +24,12 @@ export interface ItemListItem {
 	fields: Record<string, any>;
 }
 
+export interface NodeVariant {
+	name: string;
+	input_components: GradioComponentData[];
+	output_components: GradioComponentData[];
+}
+
 export interface GraphNode {
 	id: string;
 	name: string;
@@ -42,6 +48,8 @@ export interface GraphNode {
 	map_item_count?: number;
 	item_list_schema?: GradioComponentData[];
 	item_list_items?: ItemListItem[];
+	variants?: NodeVariant[];
+	selected_variant?: number;
 }
 
 export interface GraphEdge {

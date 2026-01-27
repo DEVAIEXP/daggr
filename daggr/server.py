@@ -252,6 +252,24 @@ class DaggrServer:
                                     {"type": "sheet_set", "sheet_id": sheet_id}
                                 )
 
+                    elif action == "save_variant_selection":
+                        node_id = data.get("node_id")
+                        variant_index = data.get("variant_index", 0)
+                        if user_id and current_sheet_id and node_id is not None:
+                            self.state.save_input(
+                                current_sheet_id,
+                                node_id,
+                                "_selected_variant",
+                                variant_index,
+                            )
+                            await websocket.send_json(
+                                {
+                                    "type": "variant_selection_saved",
+                                    "node_id": node_id,
+                                    "variant_index": variant_index,
+                                }
+                            )
+
             except WebSocketDisconnect:
                 if session_id in self.connections:
                     del self.connections[session_id]
@@ -331,6 +349,8 @@ class DaggrServer:
 </html>"""
 
     def _get_node_type(self, node, node_name: str) -> str:
+        from daggr.node import ChoiceNode
+
         type_map = {
             "FnNode": "FN",
             "TextInput": "INPUT",
@@ -340,7 +360,10 @@ class DaggrServer:
             "GradioNode": "GRADIO",
             "InferenceNode": "MODEL",
             "InteractionNode": "ACTION",
+            "ChoiceNode": "CHOICE",
         }
+        if isinstance(node, ChoiceNode):
+            return "CHOICE"
         class_name = node.__class__.__name__
         return type_map.get(class_name, class_name.upper())
 
@@ -365,6 +388,36 @@ class DaggrServer:
         if not isinstance(node, GradioNode):
             return False
         return bool(node._run_locally and node._local_url and not node._local_failed)
+
+    def _build_variant_data(self, variant, input_values: dict) -> dict[str, Any]:
+        from daggr.node import GradioNode
+
+        variant_name = variant._name
+        if isinstance(variant, GradioNode):
+            variant_name = f"{variant._src}"
+            if variant._api_name:
+                variant_name += f" ({variant._api_name})"
+
+        input_components = []
+        for port_name, comp in variant._input_components.items():
+            comp_data = self._serialize_component(comp, port_name)
+            input_components.append(comp_data)
+
+        output_components = []
+        for port_name, comp in variant._output_components.items():
+            if comp is None:
+                continue
+            visible = getattr(comp, "visible", True)
+            if visible is False:
+                continue
+            comp_data = self._serialize_component(comp, port_name)
+            output_components.append(comp_data)
+
+        return {
+            "name": variant_name,
+            "input_components": input_components,
+            "output_components": output_components,
+        }
 
     def _get_component_type(self, component) -> str:
         class_name = component.__class__.__name__
@@ -633,7 +686,13 @@ class DaggrServer:
         component_to_input_node: dict[int, str] = {}
         creation_order = 0
         for node_name in self.graph.nodes:
+            from daggr.node import ChoiceNode
+
             node = self.graph.nodes[node_name]
+
+            if isinstance(node, ChoiceNode):
+                continue
+
             if node._input_components:
                 for idx, (port_name, comp) in enumerate(node._input_components.items()):
                     comp_id = id(comp)
@@ -780,6 +839,8 @@ class DaggrServer:
             )
 
         for node_name in self.graph.nodes:
+            from daggr.node import ChoiceNode
+
             node = self.graph.nodes[node_name]
             x, y = node_positions.get(node_name, (50, 50))
 
@@ -847,6 +908,17 @@ class DaggrServer:
             is_output = self._is_output_node(node_name)
             is_local = self._is_running_locally(node)
 
+            variants = None
+            selected_variant = None
+            if isinstance(node, ChoiceNode):
+                variants = [
+                    self._build_variant_data(v, input_values)
+                    for v in node._variants
+                ]
+                selected_variant = input_values.get(node_id, {}).get(
+                    "_selected_variant", 0
+                )
+
             nodes.append(
                 {
                     "id": node_id,
@@ -871,6 +943,8 @@ class DaggrServer:
                     "is_output_node": is_output,
                     "is_input_node": False,
                     "is_local": is_local,
+                    "variants": variants,
+                    "selected_variant": selected_variant,
                 }
             )
 
@@ -1016,10 +1090,16 @@ class DaggrServer:
         input_values: dict[str, Any],
         selected_results: dict[str, int],
     ) -> dict:
-        from daggr.node import InteractionNode
+        from daggr.node import ChoiceNode, InteractionNode
 
         if not session_id:
             session_id = self.state.create_session(self.graph.persist_key)
+
+        for node_name, node in self.graph.nodes.items():
+            if isinstance(node, ChoiceNode):
+                node_id = node_name.replace(" ", "_").replace("-", "_")
+                variant_idx = input_values.get(node_id, {}).get("_selected_variant", 0)
+                self.executor.selected_variants[node_name] = variant_idx
 
         ancestors = self._get_ancestors(target_node)
         nodes_to_run = ancestors + [target_node]
@@ -1091,13 +1171,19 @@ class DaggrServer:
         run_id: str,
         user_id: str | None = None,
     ):
-        from daggr.node import InteractionNode
+        from daggr.node import ChoiceNode, InteractionNode
 
         can_persist = (
             user_id is not None
             and sheet_id is not None
             and self.graph.persist_key is not None
         )
+
+        for node_name, node in self.graph.nodes.items():
+            if isinstance(node, ChoiceNode):
+                node_id = node_name.replace(" ", "_").replace("-", "_")
+                variant_idx = input_values.get(node_id, {}).get("_selected_variant", 0)
+                self.executor.selected_variants[node_name] = variant_idx
 
         ancestors = self._get_ancestors(target_node)
         nodes_to_run = ancestors + [target_node]
@@ -1223,10 +1309,12 @@ class DaggrServer:
         host: str = "127.0.0.1",
         port: int = 7860,
         share: bool | None = None,
+        open_browser: bool = True,
         **kwargs,
     ):
         import secrets
         import time
+        import webbrowser
 
         import uvicorn
         from gradio.utils import colab_check, ipython_check
@@ -1277,6 +1365,8 @@ class DaggrServer:
                 display(
                     HTML(f'<a href="{url}" target="_blank">Open daggr app: {url}</a>')
                 )
+            elif open_browser:
+                webbrowser.open_new_tab(share_url or local_url)
 
             try:
                 while True:
@@ -1285,7 +1375,11 @@ class DaggrServer:
                 print("\nShutting down...")
                 server.close()
         else:
-            print(f"\n  daggr running at http://{host}:{port}\n")
+            local_url = f"http://{host}:{port}"
+            print(f"\n  daggr running at {local_url}\n")
+            if open_browser:
+                import threading
+                threading.Timer(0.5, lambda: webbrowser.open_new_tab(local_url)).start()
             uvicorn.run(self.app, host=host, port=port, **kwargs)
 
 
