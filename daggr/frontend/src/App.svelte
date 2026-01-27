@@ -273,7 +273,6 @@
 	}
 
 	function handleMessage(data: any) {
-		console.log('[daggr] received:', data.type, data);
 		if (data.type === 'graph') {
 			graphData = data.data;
 			
@@ -393,10 +392,6 @@
 					}
 				}
 			}
-		} else if (data.type === 'sheet_set') {
-			console.log('[daggr] Sheet set to:', data.sheet_id);
-		} else if (data.type === 'input_saved') {
-			console.log('[daggr] Input saved for:', data.node_id);
 		}
 	}
 
@@ -861,7 +856,6 @@
 	}
 
 	function handleReplayItem(nodeName: string, itemIndex: number) {
-		console.log(`Replay item ${itemIndex} for node ${nodeName}`);
 	}
 
 	let zoomPercent = $derived(Math.round(transform.scale * 100));
