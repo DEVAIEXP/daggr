@@ -445,6 +445,8 @@
 		} else if (data.type === 'node_started') {
 			const startedNode = data.started_node;
 			if (startedNode) {
+				runningNodes.add(startedNode);
+				runningNodes = new Set(runningNodes);
 				nodeStartTimes[startedNode] = Date.now();
 				delete nodeErrors[startedNode];
 				startTimer();
