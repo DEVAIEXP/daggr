@@ -1323,8 +1323,8 @@ class DaggrServer:
 
     def run(
         self,
-        host: str = "127.0.0.1",
-        port: int = 7860,
+        host: str | None = None,
+        port: int | None = None,
         share: bool | None = None,
         open_browser: bool = True,
         **kwargs,
@@ -1335,6 +1335,11 @@ class DaggrServer:
 
         import uvicorn
         from gradio.utils import colab_check, ipython_check
+
+        if host is None:
+            host = os.environ.get("GRADIO_SERVER_NAME", "127.0.0.1")
+        if port is None:
+            port = int(os.environ.get("GRADIO_SERVER_PORT", "7860"))
 
         self.graph._validate_edges()
 

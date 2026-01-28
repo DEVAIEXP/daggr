@@ -199,8 +199,8 @@ class Graph:
 
     def launch(
         self,
-        host: str = "127.0.0.1",
-        port: int = 7860,
+        host: str | None = None,
+        port: int | None = None,
         share: bool | None = None,
         open_browser: bool = True,
         **kwargs,
@@ -211,15 +211,25 @@ class Graph:
         execute nodes and view results.
 
         Args:
-            host: Host to bind to. Defaults to "127.0.0.1".
-            port: Port to bind to. Defaults to 7860.
+            host: Host to bind to. Defaults to GRADIO_SERVER_NAME env var,
+                or "127.0.0.1" if not set. Set to "0.0.0.0" to make
+                accessible on a network or when deploying to Hugging Face Spaces.
+            port: Port to bind to. Defaults to GRADIO_SERVER_PORT env var,
+                or 7860 if not set.
             share: If True, create a public share link. Defaults to True in
                 Colab/Kaggle environments, False otherwise.
             open_browser: If True, automatically open the app in the default
                 web browser. Defaults to True.
             **kwargs: Additional arguments passed to uvicorn.
         """
+        import os
+
         from daggr.server import DaggrServer
+
+        if host is None:
+            host = os.environ.get("GRADIO_SERVER_NAME", "127.0.0.1")
+        if port is None:
+            port = int(os.environ.get("GRADIO_SERVER_PORT", "7860"))
 
         self._prepare_local_nodes()
         server = DaggrServer(self)

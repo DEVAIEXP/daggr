@@ -410,6 +410,8 @@ This generates a temporary public URL (expires in 1 week) using Gradio's tunneli
 
 For permanent hosting, you can deploy Daggr apps on [Hugging Face Spaces](https://huggingface.co/spaces) using the Gradio SDK. Just create a new Space with the Gradio SDK, add your workflow code to `app.py`, and include `daggr` in your `requirements.txt`.
 
+Daggr automatically reads the `GRADIO_SERVER_NAME` and `GRADIO_SERVER_PORT` environment variables, which Hugging Face Spaces sets automatically for Gradio apps. This means your daggr app will work on Spaces without any additional configuration.
+
 ## Persistence and Sheets
 
 Daggr automatically saves your workflow state—input values, node results, and canvas position—so you can pick up where you left off after a page reload.
@@ -585,6 +587,8 @@ export DAGGR_LOCAL_NO_FALLBACK=1
 | `DAGGR_LOCAL_VERBOSE` | `0` | Set to `1` to show app stdout/stderr |
 | `DAGGR_LOCAL_NO_FALLBACK` | `0` | Set to `1` to disable fallback to remote |
 | `DAGGR_UPDATE_SPACES` | `0` | Set to `1` to re-clone cached Spaces |
+| `GRADIO_SERVER_NAME` | `127.0.0.1` | Host to bind to. Set to `0.0.0.0` on HF Spaces |
+| `GRADIO_SERVER_PORT` | `7860` | Port to bind to |
 
 ### Manual Local URL
 
