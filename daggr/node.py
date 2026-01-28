@@ -539,9 +539,7 @@ class InferenceNode(Node):
         found_in_cache, cached = _client_cache.get_model_task(hub_model)
         if found_in_cache:
             if cached == "__NOT_FOUND__":
-                raise ValueError(
-                    f"Model '{hub_model}' not found on Hugging Face Hub."
-                )
+                raise ValueError(f"Model '{hub_model}' not found on Hugging Face Hub.")
             self._task = cached
             self._task_fetched = True
             return

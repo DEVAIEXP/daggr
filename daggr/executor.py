@@ -57,7 +57,11 @@ def _postprocess_inference_result(task: str | None, result: Any) -> Any:
     elif task == "summarization":
         # Returns SummarizationOutput with .summary_text attribute
         return getattr(result, "summary_text", result)
-    elif task in ("audio-classification", "image-classification", "text-classification"):
+    elif task in (
+        "audio-classification",
+        "image-classification",
+        "text-classification",
+    ):
         # Returns list of ClassificationOutput objects with .label and .score
         if isinstance(result, list) and result:
             # Return as dict suitable for gr.Label
@@ -415,11 +419,60 @@ class SequentialExecutor:
         return result
 
     def _wrap_file_input(self, value: Any) -> Any:
-        if isinstance(value, FileValue):
-            from gradio_client import handle_file
+        from gradio_client import handle_file
 
+        if isinstance(value, FileValue):
             return handle_file(str(value))
+
+        # Handle base64 data URLs (from uploaded images/audio in the UI)
+        if isinstance(value, str) and value.startswith("data:"):
+            file_path = self._save_data_url_to_file(value)
+            if file_path:
+                return handle_file(file_path)
+
         return value
+
+    def _save_data_url_to_file(self, data_url: str) -> str | None:
+        """Convert a base64 data URL to a file and return the path."""
+        import base64
+        import uuid
+
+        from daggr.state import get_daggr_files_dir
+
+        # Parse data URL: data:[<mediatype>][;base64],<data>
+        if not data_url.startswith("data:"):
+            return None
+
+        try:
+            # Split header from data
+            header, encoded = data_url.split(",", 1)
+
+            # Determine file extension from media type
+            # Format: data:image/png;base64 or data:audio/wav;base64
+            media_type = header.split(":")[1].split(";")[0]
+            ext_map = {
+                "image/png": ".png",
+                "image/jpeg": ".jpg",
+                "image/jpg": ".jpg",
+                "image/gif": ".gif",
+                "image/webp": ".webp",
+                "audio/wav": ".wav",
+                "audio/mpeg": ".mp3",
+                "audio/mp3": ".mp3",
+                "audio/ogg": ".ogg",
+                "audio/webm": ".webm",
+                "video/mp4": ".mp4",
+                "video/webm": ".webm",
+            }
+            ext = ext_map.get(media_type, ".bin")
+
+            # Decode and save
+            data = base64.b64decode(encoded)
+            file_path = get_daggr_files_dir() / f"{uuid.uuid4()}{ext}"
+            file_path.write_bytes(data)
+            return str(file_path)
+        except Exception:
+            return None
 
     def _apply_postprocess(self, postprocess, raw_result: Any) -> Any:
         if isinstance(raw_result, (list, tuple)):
