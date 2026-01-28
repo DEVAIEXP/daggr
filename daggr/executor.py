@@ -72,7 +72,9 @@ def _call_inference_task(client: Any, task: str | None, inputs: dict[str, Any]) 
         "visual-question-answering": "visual_question_answering",
     }
 
-    method_name = task_method_map.get(task, "text_generation") if task else "text_generation"
+    method_name = (
+        task_method_map.get(task, "text_generation") if task else "text_generation"
+    )
     method = getattr(client, method_name, None)
 
     if method is None:
