@@ -15,7 +15,7 @@ if TYPE_CHECKING:
 
 class ConcurrencyManager:
     """Manages concurrency limits for FnNode execution within a session.
-    
+
     By default, only one FnNode runs at a time per session. FnNodes can opt
     into concurrent execution via the `concurrent` parameter, and can share
     limits via `concurrency_group`.
@@ -33,7 +33,7 @@ class ConcurrencyManager:
         max_concurrent: int,
     ) -> asyncio.Semaphore | None:
         """Get the appropriate semaphore for a FnNode.
-        
+
         Returns None if the node should run without concurrency limits
         (concurrent=True with no group).
         """
@@ -53,7 +53,7 @@ class ConcurrencyManager:
 
 class ExecutionSession:
     """Per-session execution context.
-    
+
     Each WebSocket connection gets its own ExecutionSession, providing:
     - Isolated HF token
     - Isolated results cache
@@ -80,4 +80,3 @@ class ExecutionSession:
         """Clear cached results for a fresh execution."""
         self.results = {}
         self.scattered_results = {}
-

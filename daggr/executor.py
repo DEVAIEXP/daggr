@@ -213,7 +213,7 @@ def _read_file_as_bytes(file_path: str) -> bytes:
 
 class AsyncExecutor:
     """Async executor for graph nodes.
-    
+
     This executor is stateless - all state is held in the ExecutionSession.
     It handles concurrency control:
     - GradioNode/InferenceNode: run concurrently (external API calls)
@@ -788,7 +788,7 @@ class AsyncExecutor:
 
 class SequentialExecutor:
     """Legacy synchronous executor for backwards compatibility.
-    
+
     This wraps the AsyncExecutor for use in synchronous contexts like node.test().
     For production use, prefer AsyncExecutor with proper session management.
     """

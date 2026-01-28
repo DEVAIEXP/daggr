@@ -11,7 +11,7 @@ import uvicorn
 from fastapi import FastAPI, Header, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 
-from daggr.executor import AsyncExecutor, SequentialExecutor
+from daggr.executor import AsyncExecutor
 from daggr.session import ExecutionSession
 from daggr.state import SessionState
 
@@ -85,19 +85,13 @@ class DaggrServer:
                 body = await request.json()
                 token = body.get("token")
                 if not token:
-                    return JSONResponse(
-                        {"error": "Token is required"}, status_code=400
-                    )
+                    return JSONResponse({"error": "Token is required"}, status_code=400)
                 hf_user = self._validate_hf_token(token)
                 if not hf_user:
-                    return JSONResponse(
-                        {"error": "Invalid token"}, status_code=401
-                    )
+                    return JSONResponse({"error": "Invalid token"}, status_code=401)
                 return {"hf_user": hf_user, "success": True}
             except Exception as e:
-                return JSONResponse(
-                    {"error": str(e)}, status_code=500
-                )
+                return JSONResponse({"error": str(e)}, status_code=500)
 
         @self.app.post("/api/auth/logout")
         async def auth_logout():
@@ -213,7 +207,7 @@ class DaggrServer:
             hf_user = self._get_hf_user_info()
             user_id = self.state.get_effective_user_id(hf_user)
             current_sheet_id: str | None = None
-            
+
             session = ExecutionSession(self.graph)
             running_tasks: set[asyncio.Task] = set()
 
@@ -239,12 +233,14 @@ class DaggrServer:
                     ):
                         await websocket.send_json(result)
                 except Exception as e:
-                    await websocket.send_json({
-                        "type": "error",
-                        "run_id": run_id,
-                        "error": str(e),
-                        "node": node_name,
-                    })
+                    await websocket.send_json(
+                        {
+                            "type": "error",
+                            "run_id": run_id,
+                            "error": str(e),
+                            "node": node_name,
+                        }
+                    )
 
             try:
                 while True:
@@ -1593,7 +1589,9 @@ class DaggrServer:
         try:
             for node_name in nodes_to_execute:
                 user_input = entry_inputs.get(node_name, {})
-                result = await self.executor.execute_node(session, node_name, user_input)
+                result = await self.executor.execute_node(
+                    session, node_name, user_input
+                )
                 node_results[node_name] = result
         except Exception as e:
             return JSONResponse(
