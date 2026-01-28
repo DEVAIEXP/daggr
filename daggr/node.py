@@ -249,6 +249,8 @@ class GradioNode(Node):
         outputs: dict[str, Any] | None = None,
         validate: bool = True,
         run_locally: bool = False,
+        preprocess: Callable[[dict], dict] | None = None,
+        postprocess: Callable[..., Any] | None = None,
     ):
         super().__init__(name)
         self._src = space_or_url
@@ -256,6 +258,8 @@ class GradioNode(Node):
         self._run_locally = run_locally
         self._local_url: str | None = None
         self._local_failed = False
+        self._preprocess = preprocess
+        self._postprocess = postprocess
 
         if validate:
             self._validate_space_format()
@@ -389,7 +393,7 @@ class GradioNode(Node):
             )
 
         api_returns = endpoint_info.get("returns", [])
-        if outputs and api_returns:
+        if outputs and api_returns and not self._postprocess:
             num_returns = len(api_returns)
             num_outputs = len(outputs)
             if num_outputs > num_returns:
@@ -505,9 +509,13 @@ class FnNode(Node):
         name: str | None = None,
         inputs: dict[str, Any] | None = None,
         outputs: dict[str, Any] | None = None,
+        preprocess: Callable[[dict], dict] | None = None,
+        postprocess: Callable[..., Any] | None = None,
     ):
         super().__init__(name)
         self._fn = fn
+        self._preprocess = preprocess
+        self._postprocess = postprocess
 
         if not self._name:
             self._name = self._fn.__name__

@@ -12,6 +12,32 @@ class FileValue(str):
     pass
 
 
+def _download_file(url: str) -> str:
+    import hashlib
+    from pathlib import Path
+    from urllib.parse import urlparse
+
+    import httpx
+
+    from daggr.state import get_daggr_files_dir
+
+    parsed = urlparse(url)
+    ext = Path(parsed.path).suffix or ".bin"
+    url_hash = hashlib.md5(url.encode()).hexdigest()[:16]
+    filename = f"{url_hash}{ext}"
+
+    files_dir = get_daggr_files_dir()
+    local_path = files_dir / filename
+
+    if not local_path.exists():
+        with httpx.Client(follow_redirects=True) as client:
+            response = client.get(url)
+            response.raise_for_status()
+            local_path.write_bytes(response.content)
+
+    return str(local_path)
+
+
 class SequentialExecutor:
     def __init__(self, graph: Graph):
         self.graph = graph
@@ -38,11 +64,9 @@ class SequentialExecutor:
         if client is None:
             from gradio_client import Client
 
-            from daggr.state import get_daggr_files_dir
-
             client = Client(
                 gradio_node._src,
-                download_files=get_daggr_files_dir(),
+                download_files=False,
                 verbose=False,
             )
             _client_cache.set_client(gradio_node._src, client)
@@ -172,7 +196,11 @@ class SequentialExecutor:
                     for k, v in all_inputs.items()
                     if k in node._input_ports
                 }
+                if node._preprocess:
+                    call_inputs = node._preprocess(call_inputs)
                 raw_result = client.predict(api_name=api_name, **call_inputs)
+                if node._postprocess:
+                    raw_result = self._apply_postprocess(node._postprocess, raw_result)
                 result = self._map_gradio_result(node, raw_result)
             else:
                 result = None
@@ -182,7 +210,11 @@ class SequentialExecutor:
             for port_name in node._input_ports:
                 if port_name in all_inputs:
                     fn_kwargs[port_name] = all_inputs[port_name]
+            if node._preprocess:
+                fn_kwargs = node._preprocess(fn_kwargs)
             raw_result = node._fn(**fn_kwargs)
+            if node._postprocess:
+                raw_result = self._apply_postprocess(node._postprocess, raw_result)
             result = self._map_fn_result(node, raw_result)
 
         elif isinstance(node, InferenceNode):
@@ -230,7 +262,13 @@ class SequentialExecutor:
                     for k, v in all_inputs.items()
                     if k in variant._input_ports
                 }
+                if variant._preprocess:
+                    call_inputs = variant._preprocess(call_inputs)
                 raw_result = client.predict(api_name=api_name, **call_inputs)
+                if variant._postprocess:
+                    raw_result = self._apply_postprocess(
+                        variant._postprocess, raw_result
+                    )
                 result = self._map_gradio_result(variant, raw_result)
             else:
                 result = None
@@ -240,7 +278,11 @@ class SequentialExecutor:
             for port_name in variant._input_ports:
                 if port_name in all_inputs:
                     fn_kwargs[port_name] = all_inputs[port_name]
+            if variant._preprocess:
+                fn_kwargs = variant._preprocess(fn_kwargs)
             raw_result = variant._fn(**fn_kwargs)
+            if variant._postprocess:
+                raw_result = self._apply_postprocess(variant._postprocess, raw_result)
             result = self._map_fn_result(variant, raw_result)
 
         elif isinstance(variant, InferenceNode):
@@ -267,15 +309,23 @@ class SequentialExecutor:
             return handle_file(str(value))
         return value
 
+    def _apply_postprocess(self, postprocess, raw_result: Any) -> Any:
+        if isinstance(raw_result, (list, tuple)):
+            return postprocess(*raw_result)
+        return postprocess(raw_result)
+
     def _extract_file_urls(self, data: Any) -> Any:
         from gradio_client.utils import is_file_obj_with_meta, traverse
 
-        def extract_url(file_obj: dict) -> FileValue:
-            if "url" in file_obj and file_obj["url"]:
-                return FileValue(file_obj["url"])
-            return FileValue(file_obj.get("path", ""))
+        def download_and_wrap(file_obj: dict) -> FileValue:
+            url = file_obj.get("url")
+            if url:
+                local_path = _download_file(url)
+                return FileValue(local_path)
+            path = file_obj.get("path", "")
+            return FileValue(path)
 
-        return traverse(data, extract_url, is_file_obj_with_meta)
+        return traverse(data, download_and_wrap, is_file_obj_with_meta)
 
     def _map_gradio_result(self, node, raw_result: Any) -> dict[str, Any]:
         if raw_result is None:
@@ -291,7 +341,7 @@ class SequentialExecutor:
             result = {}
             for i, port_name in enumerate(output_ports):
                 if i < len(raw_result):
-                    result[port_name] = self._extract_file_urls(raw_result[i])
+                    result[port_name] = raw_result[i]
                 else:
                     result[port_name] = None
             return result

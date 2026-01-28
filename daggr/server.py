@@ -1306,12 +1306,13 @@ class DaggrServer:
                 yield graph_data
 
         except Exception as e:
+            error_node = None
             if nodes_to_execute:
                 current_idx = len(node_results)
                 if current_idx < len(nodes_to_execute):
-                    current_node = nodes_to_execute[current_idx]
-                    node_statuses[current_node] = "error"
-                    node_results[current_node] = {"error": str(e)}
+                    error_node = nodes_to_execute[current_idx]
+                    node_statuses[error_node] = "error"
+                    node_results[error_node] = {"error": str(e)}
 
             graph_data = self._build_graph_data(
                 node_results, node_statuses, input_values, {}, sheet_id
@@ -1319,6 +1320,9 @@ class DaggrServer:
             graph_data["type"] = "error"
             graph_data["run_id"] = run_id
             graph_data["error"] = str(e)
+            if error_node:
+                graph_data["node"] = error_node
+                graph_data["completed_node"] = error_node
             yield graph_data
 
     def run(

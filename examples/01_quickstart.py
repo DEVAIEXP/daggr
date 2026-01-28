@@ -19,7 +19,7 @@ glm_image = GradioNode(
     },
     outputs={
         "image": gr.Image(
-            label="Image"  # Display in an Image component
+            label="Image"  # Display original image
         ),
     },
 )
@@ -28,12 +28,11 @@ background_remover = GradioNode(
     "hf-applications/background-removal",
     api_name="/image",
     inputs={
-        "image": glm_image.image,  # Connect the output of the GLM Image node to the input of the background remover node
+        "image": glm_image.image,
     },
+    postprocess=lambda _, final: final,
     outputs={
-        "images": gr.ImageSlider(
-            label="Final Image"  # Display original and final image in an ImageSlider
-        ),
+        "image": gr.Image(label="Final Image"),  # Display only final image
     },
 )
 
