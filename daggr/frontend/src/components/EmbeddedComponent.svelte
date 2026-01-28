@@ -17,6 +17,7 @@
 	import Label from './Label.svelte';
 	import HighlightedText from './HighlightedText.svelte';
 	import Markdown from './Markdown.svelte';
+	import Model3D from './Model3D.svelte';
 	import type { GradioComponentData } from '../types';
 
 	interface Props {
@@ -196,6 +197,11 @@
 		/>
 	{:else if comp.component === 'highlightedtext'}
 		<HighlightedText
+			label={comp.props?.label || comp.port_name}
+			value={value}
+		/>
+	{:else if comp.component === 'model3d'}
+		<Model3D
 			label={comp.props?.label || comp.port_name}
 			value={value}
 		/>

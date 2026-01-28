@@ -82,8 +82,14 @@ def _postprocess_inference_result(task: str | None, result: Any) -> Any:
             file_path.write_bytes(result)
             return str(file_path)
         return result
-    elif task == "text-to-image":
+    elif task in ("text-to-image", "image-to-image"):
         # Returns PIL Image - save to file
+        # Some providers return a dict with 'images' key
+        if isinstance(result, dict):
+            if "images" in result:
+                result = result["images"][0] if result["images"] else result
+            elif "image" in result:
+                result = result["image"]
         if hasattr(result, "save"):  # PIL Image
             file_path = get_daggr_files_dir() / f"{uuid.uuid4()}.png"
             result.save(file_path)
@@ -94,8 +100,30 @@ def _postprocess_inference_result(task: str | None, result: Any) -> Any:
 
 
 def _call_inference_task(client: Any, task: str | None, inputs: dict[str, Any]) -> Any:
-    first_input = next(iter(inputs.values()), None) if inputs else None
-    if first_input is None:
+    # Get the primary input based on task type
+    primary_input = None
+    if task in (
+        "image-to-image",
+        "image-classification",
+        "image-to-text",
+        "object-detection",
+        "image-segmentation",
+        "visual-question-answering",
+        "document-question-answering",
+    ):
+        primary_input = inputs.get("image")
+    elif task in (
+        "automatic-speech-recognition",
+        "audio-classification",
+        "audio-to-audio",
+    ):
+        primary_input = inputs.get("audio")
+
+    # Fall back to first input if no specific key found
+    if primary_input is None:
+        primary_input = next(iter(inputs.values()), None) if inputs else None
+
+    if primary_input is None:
         return None
 
     task_method_map = {
@@ -132,18 +160,65 @@ def _call_inference_task(client: Any, task: str | None, inputs: dict[str, Any]) 
     )
     method = getattr(client, method_name, None)
 
-    if method is None:
-        result = client.text_generation(first_input)
-    elif task in ("image-to-image",):
-        prompt = inputs.get("prompt", "")
-        result = method(first_input, prompt=prompt)
-    elif task in ("visual-question-answering", "document-question-answering"):
-        question = inputs.get("question", inputs.get("prompt", ""))
-        result = method(first_input, question=question)
-    else:
-        result = method(first_input)
+    # Tasks that expect image/audio bytes instead of file paths
+    file_input_tasks = {
+        "image-to-image",
+        "image-classification",
+        "image-to-text",
+        "object-detection",
+        "image-segmentation",
+        "visual-question-answering",
+        "document-question-answering",
+        "automatic-speech-recognition",
+        "audio-classification",
+        "audio-to-audio",
+    }
+
+    # Read file as bytes if needed
+    if task in file_input_tasks and isinstance(primary_input, str):
+        primary_input = _read_file_as_bytes(primary_input)
+
+    try:
+        if method is None:
+            result = client.text_generation(primary_input)
+        elif task in ("image-to-image",):
+            prompt = inputs.get("prompt", "")
+            result = method(primary_input, prompt=prompt)
+        elif task in ("visual-question-answering", "document-question-answering"):
+            question = inputs.get("question", inputs.get("prompt", ""))
+            result = method(primary_input, question=question)
+        else:
+            result = method(primary_input)
+    except KeyError as e:
+        raise RuntimeError(
+            f"Provider returned unexpected response format for task '{task}'. "
+            f"Missing key: {e}. This model may require a specific provider "
+            f"(e.g., 'model_name:fal-ai' or 'model_name:replicate')."
+        ) from e
 
     return _postprocess_inference_result(task, result)
+
+
+def _read_file_as_bytes(file_path: str) -> bytes:
+    """Read a file path or data URL as bytes."""
+    import base64
+    from pathlib import Path
+
+    # Handle data URLs
+    if file_path.startswith("data:"):
+        try:
+            _, encoded = file_path.split(",", 1)
+            return base64.b64decode(encoded)
+        except Exception:
+            pass
+
+    # Handle file paths
+    path = Path(file_path)
+    if path.exists():
+        return path.read_bytes()
+
+    # Return as-is if already bytes or can't read
+    return file_path
 
 
 class SequentialExecutor:

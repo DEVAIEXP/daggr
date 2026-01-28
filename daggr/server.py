@@ -357,6 +357,19 @@ class DaggrServer:
 </body>
 </html>"""
 
+    def _get_node_url(self, node) -> str | None:
+        from daggr.node import GradioNode, InferenceNode
+
+        if isinstance(node, GradioNode):
+            src = node._src
+            if src.startswith("http://") or src.startswith("https://"):
+                return src
+            elif "/" in src:
+                return f"https://huggingface.co/spaces/{src}"
+        elif isinstance(node, InferenceNode):
+            return f"https://huggingface.co/{node._model_name_for_hub}"
+        return None
+
     def _get_node_type(self, node, node_name: str) -> str:
         from daggr.node import ChoiceNode
 
@@ -441,6 +454,20 @@ class DaggrServer:
             "Markdown": "markdown",
             "Text": "text",
             "Dropdown": "dropdown",
+            "Video": "video",
+            "File": "file",
+            "Model3D": "model3d",
+            "Gallery": "gallery",
+            "Slider": "slider",
+            "Radio": "radio",
+            "Checkbox": "checkbox",
+            "CheckboxGroup": "checkboxgroup",
+            "ColorPicker": "colorpicker",
+            "Label": "label",
+            "HighlightedText": "highlightedtext",
+            "Code": "code",
+            "HTML": "html",
+            "Dataframe": "dataframe",
         }
         return type_map.get(class_name, "text")
 
@@ -576,7 +603,7 @@ class DaggrServer:
                     value = result
                 if comp_type == "audio":
                     value = self._process_audio_value(value)
-                elif comp_type in ("image", "video", "file"):
+                elif comp_type in ("image", "video", "file", "model3d"):
                     value = self._file_to_url(value)
                 comp_data["value"] = value
             components.append(comp_data)
@@ -988,6 +1015,7 @@ class DaggrServer:
                     "id": node_id,
                     "name": node_name,
                     "type": self._get_node_type(node, node_name),
+                    "url": self._get_node_url(node),
                     "inputs": input_ports_data,
                     "outputs": output_ports,
                     "x": x,

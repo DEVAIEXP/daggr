@@ -34,6 +34,7 @@ export interface GraphNode {
 	id: string;
 	name: string;
 	type: string;
+	url?: string;
 	inputs: Port[];
 	outputs: string[];
 	input_components?: GradioComponentData[];

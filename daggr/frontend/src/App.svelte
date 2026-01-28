@@ -985,7 +985,11 @@
 				{/if}
 				<div class="node-header">
 					<span class="type-badge" style={getBadgeStyle(node.type)}>{node.type}{#if node.is_local}&nbsp;⚡{/if}</span>
-					<span class="node-name">{node.name}</span>
+					{#if node.url}
+						<a class="node-name node-link" href={node.url} target="_blank" rel="noopener noreferrer" title="Open on Hugging Face">{node.name}</a>
+					{:else}
+						<span class="node-name">{node.name}</span>
+					{/if}
 					{#if !node.is_input_node}
 						<span 
 							class="run-btn"
@@ -1610,6 +1614,16 @@
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
+	}
+
+	.node-link {
+		text-decoration: none;
+		transition: color 0.15s;
+	}
+
+	.node-link:hover {
+		color: #f97316;
+		text-decoration: underline;
 	}
 
 	.run-btn {

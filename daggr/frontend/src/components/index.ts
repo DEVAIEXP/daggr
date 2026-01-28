@@ -25,3 +25,4 @@ export { default as Code } from './Code.svelte';
 export { default as Label } from './Label.svelte';
 export { default as HighlightedText } from './HighlightedText.svelte';
 export { default as ImageSlider } from './ImageSlider.svelte';
+export { default as Model3D } from './Model3D.svelte';

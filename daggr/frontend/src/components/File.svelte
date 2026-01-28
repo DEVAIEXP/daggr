@@ -27,9 +27,18 @@
 	let fileInputEl: HTMLInputElement | null = $state(null);
 	let isDragging = $state(false);
 
+	function normalizeFileValue(v: any): FileValue {
+		if (typeof v === 'string') {
+			const name = v.split('/').pop() || 'file';
+			return { name, size: 0, url: v };
+		}
+		return v;
+	}
+
 	let files = $derived.by(() => {
 		if (!value) return [];
-		return Array.isArray(value) ? value : [value];
+		const arr = Array.isArray(value) ? value : [value];
+		return arr.map(normalizeFileValue);
 	});
 
 	let acceptStr = $derived(fileTypes?.join(',') || '*');
@@ -76,6 +85,7 @@
 	}
 
 	function formatSize(bytes: number): string {
+		if (!bytes) return '';
 		if (bytes < 1024) return `${bytes} B`;
 		if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
 		return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
