@@ -166,7 +166,7 @@ class Node(ABC):
         if not inputs:
             inputs = self._generate_example_inputs()
 
-        graph = Graph("_test", nodes=[self], persist=False)
+        graph = Graph("_test", nodes=[self], persist_key=False)
         executor = SequentialExecutor(graph)
         return executor.execute_node(self._name, inputs)
 

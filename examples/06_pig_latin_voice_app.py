@@ -1,11 +1,46 @@
-from huggingface_hub import InferenceClient
+import gradio as gr
 
-client = InferenceClient(
-    model="black-forest-labs/FLUX.2-klein-4B", provider="replicate"
+from daggr import FnNode, Graph, InferenceNode
+
+original = InferenceNode(
+    model="openai/whisper-large-v3:replicate",
+    inputs={
+        "audio": gr.Audio(label="Audio"),
+    },
+    outputs={
+        "text": gr.Textbox(label="Text"),
+    },
 )
 
-# Any valid image path
-result = client.image_to_image(
-    "/Users/abubakar/.cache/huggingface/daggr/files/3b9410ddfedadaa2.png",
-    prompt="a cat wearing a hat",
+
+def pig_latin_sentence(text: str) -> str:
+    words = text.split()
+    pig_latin_words = []
+    for word in words:
+        pig_latin_words.append(word[1:] + word[0] + "ay")
+    return " ".join(pig_latin_words)
+
+
+pig_latin = FnNode(
+    fn=pig_latin_sentence,
+    inputs={
+        "text": original.text,
+    },
+    outputs={
+        "text": gr.Textbox(label="Text"),
+    },
 )
+
+output = InferenceNode(
+    model="hexgrad/Kokoro-82M",
+    inputs={
+        "text": pig_latin.text,
+    },
+    outputs={
+        "audio": gr.Audio(label="Audio"),
+    },
+)
+
+graph = Graph(name="Pig Latin Voice App", nodes=[original, pig_latin, output])
+
+graph.launch()

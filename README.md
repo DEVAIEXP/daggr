@@ -451,7 +451,7 @@ The sheet selector appears in the title bar. Click to switch between sheets, cre
 | **Local** | Not logged in | ✅ Saved as "local" user |
 | **Local** | HF logged in | ✅ Saved under your HF username |
 
-When running locally, your data is stored in a SQLite database (`.daggr_sessions.db`) in the current directory.
+When running locally, your data is stored in a SQLite database at `~/.cache/huggingface/daggr/sessions.db`.
 
 ### The `persist_key` Parameter
 
