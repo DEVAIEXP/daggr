@@ -48,12 +48,14 @@ guest_voice = GradioNode(
 
 def generate_dialogue(topic: str) -> dict:
     time.sleep(1)
-    return {"items": [
-        {"speaker": "Host", "text": "Hello, welcome to the show!"},
-        {"speaker": "Guest", "text": "Thanks for having me!"},
-        {"speaker": "Host", "text": "Today we're discussing " + topic},
-        {"speaker": "Guest", "text": "Yes, it's a fascinating topic!"},
-    ]}
+    return {
+        "items": [
+            {"speaker": "Host", "text": "Hello, welcome to the show!"},
+            {"speaker": "Guest", "text": "Thanks for having me!"},
+            {"speaker": "Host", "text": "Today we're discussing " + topic},
+            {"speaker": "Guest", "text": "Yes, it's a fascinating topic!"},
+        ]
+    }
 
 
 dialogue = FnNode(
