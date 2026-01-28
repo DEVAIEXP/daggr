@@ -41,7 +41,7 @@ glm_image = GradioNode(
     inputs={
         "prompt": gr.Textbox(  # An input node is created for the prompt
             label="Prompt",
-            value="A cheetah sprints across the grassy savanna.",
+            value="A cheetah the grassy savanna.",
             lines=3,
         ),
         "height": 1024,  # Fixed value (does not appear in the canvas)
@@ -50,7 +50,7 @@ glm_image = GradioNode(
     },
     outputs={
         "image": gr.Image(
-            label="Image"  # Display in an Image component
+            label="Image"  # Display original image
         ),
     },
 )
@@ -59,13 +59,11 @@ background_remover = GradioNode(
     "hf-applications/background-removal",
     api_name="/image",
     inputs={
-        "image": glm_image.image,  # Connect the output of the GLM Image node to the input of the background remover node
+        "image": glm_image.image,
     },
+    postprocess=lambda _, final: final,
     outputs={
-        "original_image": None,  # Original image is returned but not displayed
-        "final_image": gr.Image(
-            label="Final Image"
-        ),  # Transparent bg image is displayed
+        "image": gr.Image(label="Final Image"),  # Display only final image
     },
 )
 
