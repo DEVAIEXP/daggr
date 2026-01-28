@@ -3,7 +3,10 @@ from __future__ import annotations
 import argparse
 import importlib.util
 import os
+import re
+import shutil
 import sys
+import tempfile
 from pathlib import Path
 
 
@@ -42,6 +45,10 @@ def find_python_imports(file_path: Path) -> list[Path]:
 
 
 def main():
+    if len(sys.argv) > 1 and sys.argv[1] == "deploy":
+        _deploy_main()
+        return
+
     parser = argparse.ArgumentParser(
         prog="daggr",
         description="Run a daggr app with hot reload",
@@ -109,6 +116,313 @@ def main():
     else:
         os.environ["DAGGR_HOT_RELOAD"] = "1"
         _run_with_reload(script_path, args.host, args.port, watch_daggr)
+
+
+def _deploy_main():
+    """Entry point for the deploy subcommand."""
+    parser = argparse.ArgumentParser(
+        prog="daggr deploy",
+        description="Deploy a daggr app to Hugging Face Spaces",
+    )
+    parser.add_argument(
+        "script",
+        help="Path to the Python script containing the daggr Graph",
+    )
+    parser.add_argument(
+        "--name",
+        "-n",
+        help="Space name (default: derived from Graph name)",
+    )
+    parser.add_argument(
+        "--title",
+        "-t",
+        help="Display title for the Space (default: Graph name)",
+    )
+    parser.add_argument(
+        "--org",
+        "-o",
+        help="Organization or username to deploy under (default: your HF account)",
+    )
+    parser.add_argument(
+        "--private",
+        "-p",
+        action="store_true",
+        help="Make the Space private",
+    )
+    parser.add_argument(
+        "--hardware",
+        default="cpu-basic",
+        help="Hardware tier (default: cpu-basic). Options: cpu-basic, cpu-upgrade, t4-small, t4-medium, a10g-small, etc.",
+    )
+    parser.add_argument(
+        "--secret",
+        "-s",
+        action="append",
+        dest="secrets",
+        metavar="KEY=VALUE",
+        help="Add a secret (can be repeated). Example: --secret HF_TOKEN=xxx",
+    )
+    parser.add_argument(
+        "--requirements",
+        "-r",
+        help="Path to requirements.txt (default: auto-detect or generate)",
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Preview what would be deployed without actually deploying",
+    )
+
+    args = parser.parse_args(sys.argv[2:])
+
+    script_path = Path(args.script).resolve()
+    if not script_path.exists():
+        print(f"Error: Script not found: {script_path}")
+        sys.exit(1)
+
+    if not script_path.suffix == ".py":
+        print(f"Error: Script must be a Python file: {script_path}")
+        sys.exit(1)
+
+    secrets = {}
+    if args.secrets:
+        for secret in args.secrets:
+            if "=" not in secret:
+                print(f"Error: Invalid secret format '{secret}'. Use KEY=VALUE")
+                sys.exit(1)
+            key, value = secret.split("=", 1)
+            secrets[key] = value
+
+    _deploy(
+        script_path=script_path,
+        name=args.name,
+        title=args.title,
+        org=args.org,
+        private=args.private,
+        hardware=args.hardware,
+        secrets=secrets,
+        requirements_path=args.requirements,
+        dry_run=args.dry_run,
+    )
+
+
+def _extract_graph(script_path: Path):
+    """Extract the Graph object from a script without running it."""
+    from daggr.graph import Graph
+
+    sys.path.insert(0, str(script_path.parent))
+
+    original_launch = Graph.launch
+    captured_graph = None
+
+    def capture_launch(self, **kwargs):
+        nonlocal captured_graph
+        captured_graph = self
+
+    Graph.launch = capture_launch
+
+    try:
+        spec = importlib.util.spec_from_file_location("__daggr_deploy__", script_path)
+        if spec is None or spec.loader is None:
+            print(f"Error: Could not load script: {script_path}")
+            sys.exit(1)
+
+        module = importlib.util.module_from_spec(spec)
+        sys.modules["__daggr_deploy__"] = module
+        spec.loader.exec_module(module)
+    finally:
+        Graph.launch = original_launch
+
+    if captured_graph is None:
+        for name in dir(module):
+            obj = getattr(module, name)
+            if isinstance(obj, Graph):
+                captured_graph = obj
+                break
+
+    if captured_graph is None:
+        print(f"Error: No Graph found in {script_path}")
+        sys.exit(1)
+
+    return captured_graph
+
+
+def _sanitize_space_name(name: str) -> str:
+    """Convert a Graph name to a valid HF Space name."""
+    sanitized = re.sub(r"[^a-zA-Z0-9\s-]", "", name)
+    sanitized = re.sub(r"[\s_]+", "-", sanitized)
+    sanitized = sanitized.lower().strip("-")
+    return sanitized or "daggr-app"
+
+
+def _deploy(
+    script_path: Path,
+    name: str | None,
+    title: str | None,
+    org: str | None,
+    private: bool,
+    hardware: str,
+    secrets: dict[str, str],
+    requirements_path: str | None,
+    dry_run: bool,
+):
+    """Deploy a daggr app to Hugging Face Spaces."""
+    import huggingface_hub
+    from huggingface_hub import HfApi
+
+    import daggr
+
+    print("\n  Extracting Graph from script...")
+    graph = _extract_graph(script_path)
+
+    space_name = name or _sanitize_space_name(graph.name)
+    space_title = title or graph.name
+
+    print(f"  Graph name: {graph.name}")
+    print(f"  Space name: {space_name}")
+    print(f"  Space title: {space_title}")
+
+    hf_api = HfApi()
+    whoami = None
+    login_needed = False
+
+    try:
+        whoami = hf_api.whoami()
+        if whoami["auth"]["accessToken"]["role"] != "write":
+            login_needed = True
+    except Exception:
+        login_needed = True
+
+    if login_needed:
+        print("\n  Need 'write' access token to create a Spaces repo.")
+        huggingface_hub.login(add_to_git_credential=False)
+        whoami = hf_api.whoami()
+
+    username = whoami["name"]
+    namespace = org or username
+    repo_id = f"{namespace}/{space_name}"
+
+    print(f"\n  Target: https://huggingface.co/spaces/{repo_id}")
+    print(f"  Hardware: {hardware}")
+    print(f"  Private: {private}")
+    if secrets:
+        print(f"  Secrets: {list(secrets.keys())}")
+
+    local_imports = find_python_imports(script_path)
+    print(f"\n  Files to upload:")
+    print(f"    • app.py (from {script_path.name})")
+    print(f"    • requirements.txt")
+    print(f"    • README.md")
+    for imp in local_imports:
+        if imp.is_file():
+            print(f"    • {imp.name}")
+        else:
+            print(f"    • {imp.name}/ (package)")
+
+    if dry_run:
+        print("\n  [Dry run] No changes made.")
+        return
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmpdir = Path(tmpdir)
+
+        shutil.copy(script_path, tmpdir / "app.py")
+
+        for imp in local_imports:
+            if imp.is_file():
+                shutil.copy(imp, tmpdir / imp.name)
+            else:
+                shutil.copytree(imp, tmpdir / imp.name)
+
+        if requirements_path:
+            req_path = Path(requirements_path)
+            if not req_path.exists():
+                print(f"Error: Requirements file not found: {req_path}")
+                sys.exit(1)
+            shutil.copy(req_path, tmpdir / "requirements.txt")
+
+            with open(tmpdir / "requirements.txt", "r") as f:
+                req_content = f.read()
+            if "daggr" not in req_content:
+                with open(tmpdir / "requirements.txt", "a") as f:
+                    f.write(f"\ndaggr>={daggr.__version__}\n")
+        else:
+            script_dir = script_path.parent
+            existing_req = script_dir / "requirements.txt"
+            if existing_req.exists():
+                shutil.copy(existing_req, tmpdir / "requirements.txt")
+                with open(tmpdir / "requirements.txt", "r") as f:
+                    req_content = f.read()
+                if "daggr" not in req_content:
+                    with open(tmpdir / "requirements.txt", "a") as f:
+                        f.write(f"\ndaggr>={daggr.__version__}\n")
+            else:
+                with open(tmpdir / "requirements.txt", "w") as f:
+                    f.write(f"daggr>={daggr.__version__}\n")
+
+        readme_content = f"""---
+title: {space_title}
+emoji: 🔀
+colorFrom: blue
+colorTo: purple
+sdk: gradio
+sdk_version: "{_get_gradio_version()}"
+app_file: app.py
+pinned: false
+---
+
+# {space_title}
+
+This Space was deployed using [daggr](https://github.com/gradio-app/daggr).
+"""
+        with open(tmpdir / "README.md", "w") as f:
+            f.write(readme_content)
+
+        print("\n  Creating Space repository...")
+        try:
+            hf_api.create_repo(
+                repo_id=repo_id,
+                repo_type="space",
+                space_sdk="gradio",
+                space_hardware=hardware,
+                private=private,
+                exist_ok=True,
+            )
+        except Exception as e:
+            print(f"Error creating repository: {e}")
+            sys.exit(1)
+
+        print("  Uploading files...")
+        try:
+            hf_api.upload_folder(
+                repo_id=repo_id,
+                repo_type="space",
+                folder_path=str(tmpdir),
+            )
+        except Exception as e:
+            print(f"Error uploading files: {e}")
+            sys.exit(1)
+
+        if secrets:
+            print("  Adding secrets...")
+            for secret_name, secret_value in secrets.items():
+                try:
+                    hf_api.add_space_secret(repo_id, secret_name, secret_value)
+                except Exception as e:
+                    print(f"  Warning: Could not add secret '{secret_name}': {e}")
+
+    print(f"\n  ✓ Deployed to https://huggingface.co/spaces/{repo_id}")
+    print(f"    The Space may take a few minutes to build and start.\n")
+
+
+def _get_gradio_version() -> str:
+    """Get the installed Gradio version."""
+    try:
+        import gradio
+
+        return gradio.__version__
+    except ImportError:
+        return "5.0.0"
 
 
 def _reset_cache(script_path: Path):

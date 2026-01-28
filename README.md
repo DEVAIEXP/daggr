@@ -425,7 +425,59 @@ graph.launch(share=True)
 
 This generates a temporary public URL (expires in 1 week) using Gradio's tunneling infrastructure.
 
-For permanent hosting, you can deploy Daggr apps on [Hugging Face Spaces](https://huggingface.co/spaces) using the Gradio SDK. Just create a new Space with the Gradio SDK, add your workflow code to `app.py`, and include `daggr` in your `requirements.txt`.
+### Deploying to Hugging Face Spaces
+
+For permanent hosting, use `daggr deploy` to deploy your app to [Hugging Face Spaces](https://huggingface.co/spaces):
+
+```bash
+daggr deploy my_app.py
+```
+
+Assuming you are logged in locally with your [Hugging Face token](https://huggingface.co/settings/tokens), this command:
+1. Extracts the Graph from your script
+2. Creates a Space named after your Graph (e.g., "Podcast Generator" → `podcast-generator`)
+3. Uploads your script and dependencies
+4. Configures the Space with the Gradio SDK
+
+#### Deploy Options
+
+```bash
+# Custom Space name
+daggr deploy my_app.py --name my-custom-space
+
+# Deploy to an organization
+daggr deploy my_app.py --org huggingface
+
+# Private Space with GPU
+daggr deploy my_app.py --private --hardware t4-small
+
+# Add secrets (e.g., API keys)
+daggr deploy my_app.py --secret HF_TOKEN=xxx --secret OPENAI_KEY=yyy
+
+# Preview without deploying
+daggr deploy my_app.py --dry-run
+```
+
+| Option | Short | Description |
+|--------|-------|-------------|
+| `--name` | `-n` | Space name (default: derived from Graph name) |
+| `--title` | `-t` | Display title (default: Graph name) |
+| `--org` | `-o` | Organization to deploy under |
+| `--private` | `-p` | Make the Space private |
+| `--hardware` | | Hardware tier: `cpu-basic`, `cpu-upgrade`, `t4-small`, `t4-medium`, `a10g-small`, etc. |
+| `--secret` | `-s` | Add secrets (repeatable) |
+| `--requirements` | `-r` | Custom requirements.txt path |
+| `--dry-run` | | Preview what would be deployed |
+
+The deploy command automatically:
+- Detects local Python imports and includes them
+- Uses existing `requirements.txt` if present, or generates one with `daggr`
+- Renames your script to `app.py` (HF Spaces convention)
+- Generates the required `README.md` with Space metadata
+
+### Manual Deployment
+
+You can also deploy manually by creating a new Space with the Gradio SDK, adding your workflow code to `app.py`, and including `daggr` in your `requirements.txt`.
 
 Daggr automatically reads the `GRADIO_SERVER_NAME` and `GRADIO_SERVER_PORT` environment variables, which Hugging Face Spaces sets automatically for Gradio apps. This means your daggr app will work on Spaces without any additional configuration.
 
