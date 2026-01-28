@@ -215,6 +215,36 @@ class DaggrServer:
             current_sheet_id: str | None = None
             
             session = ExecutionSession(self.graph)
+            running_tasks: set[asyncio.Task] = set()
+
+            async def run_node_execution(
+                node_name: str,
+                sheet_id: str | None,
+                input_values: dict,
+                item_list_values: dict,
+                selected_results: dict,
+                run_id: str,
+                user_id: str | None,
+            ):
+                try:
+                    async for result in self._execute_to_node_streaming(
+                        session,
+                        node_name,
+                        sheet_id,
+                        input_values,
+                        item_list_values,
+                        selected_results,
+                        run_id,
+                        user_id,
+                    ):
+                        await websocket.send_json(result)
+                except Exception as e:
+                    await websocket.send_json({
+                        "type": "error",
+                        "run_id": run_id,
+                        "error": str(e),
+                        "node": node_name,
+                    })
 
             try:
                 while True:
@@ -240,17 +270,19 @@ class DaggrServer:
                         run_id = data.get("run_id")
                         sheet_id = data.get("sheet_id") or current_sheet_id
 
-                        async for result in self._execute_to_node_streaming(
-                            session,
-                            node_name,
-                            sheet_id,
-                            input_values,
-                            item_list_values,
-                            selected_results,
-                            run_id,
-                            user_id,
-                        ):
-                            await websocket.send_json(result)
+                        task = asyncio.create_task(
+                            run_node_execution(
+                                node_name,
+                                sheet_id,
+                                input_values,
+                                item_list_values,
+                                selected_results,
+                                run_id,
+                                user_id,
+                            )
+                        )
+                        running_tasks.add(task)
+                        task.add_done_callback(running_tasks.discard)
 
                     elif action == "get_graph":
                         try:
@@ -348,9 +380,13 @@ class DaggrServer:
                             )
 
             except WebSocketDisconnect:
+                for task in running_tasks:
+                    task.cancel()
                 if session_id in self.connections:
                     del self.connections[session_id]
             except Exception as e:
+                for task in running_tasks:
+                    task.cancel()
                 print(f"[ERROR] WebSocket error: {e}")
                 import traceback
 

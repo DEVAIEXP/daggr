@@ -247,7 +247,7 @@ class AsyncExecutor:
                 gradio_node._src,
                 download_files=False,
                 verbose=False,
-                hf_token=session.hf_token,
+                token=session.hf_token,
             )
         else:
             client = _client_cache.get_client(gradio_node._src)
