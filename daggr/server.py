@@ -145,6 +145,18 @@ class DaggrServer:
                 node_name, session_id, input_values, selected_results
             )
 
+        @self.app.get("/api/schema")
+        async def get_api_schema():
+            return self.graph.get_api_schema()
+
+        @self.app.post("/api/call")
+        async def call_workflow(request: Request):
+            return await self._execute_workflow_api(request, subgraph_id=None)
+
+        @self.app.post("/api/call/{subgraph_id}")
+        async def call_subgraph(subgraph_id: str, request: Request):
+            return await self._execute_workflow_api(request, subgraph_id=subgraph_id)
+
         @self.app.websocket("/ws/{session_id}")
         async def websocket_endpoint(websocket: WebSocket, session_id: str):
             await websocket.accept()
@@ -1399,6 +1411,100 @@ class DaggrServer:
                 graph_data["node"] = error_node
                 graph_data["completed_node"] = error_node
             yield graph_data
+
+    async def _execute_workflow_api(
+        self, request: Request, subgraph_id: str | None = None
+    ) -> JSONResponse:
+        from daggr.node import ChoiceNode
+
+        try:
+            body = await request.json()
+        except Exception:
+            body = {}
+
+        input_values = body.get("inputs", {})
+
+        subgraphs = self.graph.get_subgraphs()
+        output_node_names = set(self.graph.get_output_nodes())
+
+        if subgraph_id is None:
+            if len(subgraphs) > 1:
+                return JSONResponse(
+                    {
+                        "error": "Multiple subgraphs detected. Please specify a subgraph_id.",
+                        "available_subgraphs": [
+                            f"subgraph_{i}" for i in range(len(subgraphs))
+                        ],
+                    },
+                    status_code=400,
+                )
+            target_nodes = subgraphs[0] if subgraphs else set(self.graph.nodes.keys())
+        else:
+            if subgraph_id == "main" and len(subgraphs) == 1:
+                target_nodes = subgraphs[0]
+            elif subgraph_id.startswith("subgraph_"):
+                try:
+                    idx = int(subgraph_id.split("_")[1])
+                    if idx < 0 or idx >= len(subgraphs):
+                        return JSONResponse(
+                            {"error": f"Subgraph '{subgraph_id}' not found"},
+                            status_code=404,
+                        )
+                    target_nodes = subgraphs[idx]
+                except (ValueError, IndexError):
+                    return JSONResponse(
+                        {"error": f"Invalid subgraph_id '{subgraph_id}'"},
+                        status_code=400,
+                    )
+            else:
+                return JSONResponse(
+                    {"error": f"Subgraph '{subgraph_id}' not found"},
+                    status_code=404,
+                )
+
+        for node_name, node in self.graph.nodes.items():
+            if isinstance(node, ChoiceNode):
+                node_id = node_name.replace(" ", "_").replace("-", "_")
+                variant_idx = input_values.get(f"{node_id}___selected_variant", 0)
+                self.executor.selected_variants[node_name] = variant_idx
+
+        execution_order = self.graph.get_execution_order()
+        nodes_to_execute = [n for n in execution_order if n in target_nodes]
+
+        entry_inputs: dict[str, dict[str, Any]] = {}
+        for node_name in nodes_to_execute:
+            node = self.graph.nodes[node_name]
+            if node._input_components:
+                node_inputs = {}
+                for port_name in node._input_components:
+                    input_node_id = f"{node_name}__{port_name}".replace(" ", "_").replace("-", "_")
+                    if input_node_id in input_values:
+                        node_inputs[port_name] = input_values[input_node_id]
+                if node_inputs:
+                    entry_inputs[node_name] = node_inputs
+
+        self.executor.results = {}
+        node_results = {}
+
+        try:
+            for node_name in nodes_to_execute:
+                user_input = entry_inputs.get(node_name, {})
+                result = self.executor.execute_node(node_name, user_input)
+                node_results[node_name] = result
+        except Exception as e:
+            return JSONResponse(
+                {"error": f"Execution error in node '{node_name}': {str(e)}"},
+                status_code=500,
+            )
+
+        outputs = {}
+        for node_name in nodes_to_execute:
+            if node_name in output_node_names and node_name in node_results:
+                result = node_results[node_name]
+                result = self._transform_file_paths(result)
+                outputs[node_name] = result
+
+        return JSONResponse({"outputs": outputs})
 
     def run(
         self,

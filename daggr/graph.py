@@ -129,7 +129,10 @@ class Graph:
                     msg += f" Did you mean '{suggestion}'?"
                 raise ValueError(msg)
 
+            is_new_node = source_node._name not in self.nodes
             self._add_node(source_node)
+            if is_new_node:
+                self._create_edges_from_port_connections(source_node)
             target_port = Port(node, target_port_name)
             edge = Edge(source_port, target_port)
             self._add_edge(edge)
@@ -248,6 +251,110 @@ class Graph:
                         prepare_local_node(variant)
             elif isinstance(node, GradioNode) and node._run_locally:
                 prepare_local_node(node)
+
+    def get_subgraphs(self) -> list[set[str]]:
+        """Get all weakly connected components of the graph.
+
+        Returns a list of sets, where each set contains the node names
+        belonging to a connected subgraph. If the graph is fully connected,
+        returns a single set with all node names.
+        """
+        return [set(c) for c in nx.weakly_connected_components(self._nx_graph)]
+
+    def get_output_nodes(self) -> list[str]:
+        """Get all nodes with no outgoing edges (output/leaf nodes)."""
+        return [
+            node_name
+            for node_name in self.nodes
+            if self._nx_graph.out_degree(node_name) == 0
+        ]
+
+    def get_api_schema(self) -> dict:
+        """Get the API schema describing inputs and outputs for each subgraph.
+
+        Returns a dict with:
+        - subgraphs: list of subgraph info, each containing:
+          - id: subgraph identifier (e.g., "main" or "subgraph_0")
+          - inputs: list of {node, port, type, component} for each input
+          - outputs: list of {node, port, type, component} for each output
+        """
+        from daggr.node import ChoiceNode
+
+        subgraphs = self.get_subgraphs()
+        output_nodes = set(self.get_output_nodes())
+        result = {"subgraphs": []}
+
+        for idx, subgraph_nodes in enumerate(subgraphs):
+            subgraph_id = "main" if len(subgraphs) == 1 else f"subgraph_{idx}"
+
+            inputs = []
+            outputs = []
+
+            for node_name in subgraph_nodes:
+                node = self.nodes[node_name]
+
+                if isinstance(node, ChoiceNode):
+                    continue
+
+                if node._input_components:
+                    for port_name, comp in node._input_components.items():
+                        comp_type = self._get_component_type(comp)
+                        inputs.append({
+                            "node": node_name,
+                            "port": port_name,
+                            "type": comp_type,
+                            "id": f"{node_name}__{port_name}".replace(" ", "_").replace("-", "_"),
+                        })
+
+                if node_name in output_nodes and node._output_components:
+                    for port_name, comp in node._output_components.items():
+                        if comp is None:
+                            continue
+                        comp_type = self._get_component_type(comp)
+                        outputs.append({
+                            "node": node_name,
+                            "port": port_name,
+                            "type": comp_type,
+                        })
+
+            result["subgraphs"].append({
+                "id": subgraph_id,
+                "inputs": inputs,
+                "outputs": outputs,
+            })
+
+        return result
+
+    def _get_component_type(self, component) -> str:
+        """Get the type string for a Gradio component."""
+        class_name = component.__class__.__name__
+        type_map = {
+            "Audio": "audio",
+            "Textbox": "textbox",
+            "TextArea": "textarea",
+            "JSON": "json",
+            "Chatbot": "json",
+            "Image": "image",
+            "Number": "number",
+            "Markdown": "markdown",
+            "Text": "text",
+            "Dropdown": "dropdown",
+            "Video": "video",
+            "File": "file",
+            "Model3D": "model3d",
+            "Gallery": "gallery",
+            "Slider": "slider",
+            "Radio": "radio",
+            "Checkbox": "checkbox",
+            "CheckboxGroup": "checkboxgroup",
+            "ColorPicker": "colorpicker",
+            "Label": "label",
+            "HighlightedText": "highlightedtext",
+            "Code": "code",
+            "HTML": "html",
+            "Dataframe": "dataframe",
+        }
+        return type_map.get(class_name, "text")
 
     def __repr__(self):
         return f"Graph(name={self.name}, nodes={len(self.nodes)}, edges={len(self._edges)})"
