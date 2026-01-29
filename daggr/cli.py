@@ -5,9 +5,32 @@ import importlib.util
 import os
 import re
 import shutil
+import socket
 import sys
 import tempfile
 from pathlib import Path
+
+
+INITIAL_PORT_VALUE = int(os.getenv("DAGGR_SERVER_PORT", "7860"))
+TRY_NUM_PORTS = int(os.getenv("DAGGR_NUM_PORTS", "100"))
+
+
+def _find_available_port(host: str, start_port: int) -> int:
+    """Find an available port starting from start_port."""
+    for port in range(start_port, start_port + TRY_NUM_PORTS):
+        try:
+            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            s.bind((host if host != "0.0.0.0" else "127.0.0.1", port))
+            s.close()
+            return port
+        except OSError:
+            continue
+    raise OSError(
+        f"Cannot find empty port in range: {start_port}-{start_port + TRY_NUM_PORTS - 1}. "
+        f"You can specify a different port by setting the DAGGR_SERVER_PORT environment variable "
+        f"or passing the --port parameter."
+    )
 
 
 def find_python_imports(file_path: Path) -> list[Path]:
@@ -537,6 +560,10 @@ def _run_with_reload(script_path: Path, host: str, port: int, watch_daggr: bool)
     """Run the script with uvicorn hot reload."""
     import uvicorn
 
+    actual_port = _find_available_port(host, port)
+    if actual_port != port:
+        print(f"\n  Port {port} is in use, using {actual_port} instead.")
+
     reload_dirs = [str(script_path.parent)]
 
     local_imports = find_python_imports(script_path)
@@ -559,6 +586,8 @@ def _run_with_reload(script_path: Path, host: str, port: int, watch_daggr: bool)
         print(f"    • {d}")
     print()
 
+    os.environ["DAGGR_PORT"] = str(actual_port)
+
     import threading
     import webbrowser
 
@@ -566,7 +595,7 @@ def _run_with_reload(script_path: Path, host: str, port: int, watch_daggr: bool)
         import time
 
         time.sleep(1.0)
-        webbrowser.open_new_tab(f"http://{host}:{port}")
+        webbrowser.open_new_tab(f"http://{host}:{actual_port}")
 
     threading.Thread(target=open_browser, daemon=True).start()
 
@@ -574,7 +603,7 @@ def _run_with_reload(script_path: Path, host: str, port: int, watch_daggr: bool)
         "daggr.cli:_create_app",
         factory=True,
         host=host,
-        port=port,
+        port=actual_port,
         reload=True,
         reload_dirs=reload_dirs,
         reload_includes=reload_includes,

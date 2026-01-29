@@ -4,6 +4,7 @@ import asyncio
 import json
 import mimetypes
 import os
+import socket
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -17,6 +18,28 @@ from daggr.state import SessionState
 
 if TYPE_CHECKING:
     from daggr.graph import Graph
+
+
+INITIAL_PORT_VALUE = int(os.getenv("DAGGR_SERVER_PORT", "7860"))
+TRY_NUM_PORTS = int(os.getenv("DAGGR_NUM_PORTS", "100"))
+
+
+def _find_available_port(host: str, start_port: int) -> int:
+    """Find an available port starting from start_port."""
+    for port in range(start_port, start_port + TRY_NUM_PORTS):
+        try:
+            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            s.bind((host if host != "0.0.0.0" else "127.0.0.1", port))
+            s.close()
+            return port
+        except OSError:
+            continue
+    raise OSError(
+        f"Cannot find empty port in range: {start_port}-{start_port + TRY_NUM_PORTS - 1}. "
+        f"You can specify a different port by setting the DAGGR_SERVER_PORT environment variable "
+        f"or passing the port parameter to launch()."
+    )
 
 
 class DaggrServer:
@@ -1749,6 +1772,10 @@ class DaggrServer:
         if port is None:
             port = int(os.environ.get("GRADIO_SERVER_PORT", "7860"))
 
+        actual_port = _find_available_port(host, port)
+        if actual_port != port:
+            print(f"\n  Port {port} is in use, using {actual_port} instead.")
+
         self.graph._validate_edges()
 
         is_colab = colab_check()
@@ -1762,13 +1789,13 @@ class DaggrServer:
             config = uvicorn.Config(
                 app=self.app,
                 host=host,
-                port=port,
+                port=actual_port,
                 log_level="warning",
             )
             server = _Server(config)
             server.run_in_thread()
 
-            local_url = f"http://{host}:{port}"
+            local_url = f"http://{host}:{actual_port}"
             print(f"\n  daggr running at {local_url}")
 
             share_url = None
@@ -1778,7 +1805,7 @@ class DaggrServer:
                 share_token = secrets.token_urlsafe(32)
                 share_url = setup_tunnel(
                     local_host=host,
-                    local_port=port,
+                    local_port=actual_port,
                     share_token=share_token,
                     share_server_address=None,
                     share_server_tls_certificate=None,
@@ -1805,13 +1832,13 @@ class DaggrServer:
                 print("\nShutting down...")
                 server.close()
         else:
-            local_url = f"http://{host}:{port}"
+            local_url = f"http://{host}:{actual_port}"
             print(f"\n  daggr running at {local_url}\n")
             if open_browser:
                 import threading
 
                 threading.Timer(0.5, lambda: webbrowser.open_new_tab(local_url)).start()
-            uvicorn.run(self.app, host=host, port=port, **kwargs)
+            uvicorn.run(self.app, host=host, port=actual_port, **kwargs)
 
 
 class _Server(uvicorn.Server):
