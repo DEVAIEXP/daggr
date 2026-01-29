@@ -179,3 +179,23 @@ daggr workflow.py  # Starts server with hot reload at http://127.0.0.1:7860
 ```bash
 rm -rf ~/.cache/huggingface/daggr/*.db
 ```
+
+## Deploy to Hugging Face Spaces
+
+Only deploy if the user has explicitly asked to publish/deploy their workflow.
+
+```bash
+daggr deploy workflow.py
+```
+
+This extracts the Graph, creates a Space named after it, and uploads everything.
+
+**Options:**
+```bash
+daggr deploy workflow.py --name my-space      # Custom Space name
+daggr deploy workflow.py --org huggingface    # Deploy to an organization
+daggr deploy workflow.py --private            # Private Space
+daggr deploy workflow.py --hardware t4-small  # GPU (t4-small, t4-medium, a10g-small, etc.)
+daggr deploy workflow.py --secret KEY=value   # Add secrets (repeatable)
+daggr deploy workflow.py --dry-run            # Preview without deploying
+```
