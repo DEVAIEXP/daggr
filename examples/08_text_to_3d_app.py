@@ -1,4 +1,5 @@
 import gradio as gr
+
 from daggr import GradioNode, Graph
 
 text_to_image = GradioNode(
@@ -12,7 +13,9 @@ text_to_image = GradioNode(
         ),
         "height": 1024,
         "width": 1024,
-        "seed": gr.Number(label="Seed (Image generation)", value=0, minimum=0, maximum=1000),
+        "seed": gr.Number(
+            label="Seed (Image generation)", value=0, minimum=0, maximum=1000
+        ),
     },
     outputs={
         "image": gr.Image(label="Image"),
@@ -36,7 +39,9 @@ image_to_3d_step1 = GradioNode(
     api_name="/image_to_3d",
     inputs={
         "image": background_remover.output,
-        "seed": gr.Number(label="Seed (Mesh generation)", value=0, minimum=0, maximum=1000),
+        "seed": gr.Number(
+            label="Seed (Mesh generation)", value=0, minimum=0, maximum=1000
+        ),
         "ss_guidance_strength": 7.5,
         "ss_sampling_steps": 12,
         "slat_guidance_strength": 3.0,
