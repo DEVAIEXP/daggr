@@ -34,7 +34,8 @@ img = GradioNode("Tongyi-MAI/Z-Image-Turbo", api_name="/generate",
     outputs={"image": gr.Image()})
 ```
 
-Find models: `https://huggingface.co/api/models?inference_provider=all&pipeline_tag=text-to-image` (swap pipeline_tag)
+Find models: `https://huggingface.co/api/models?inference_provider=all&pipeline_tag=text-to-image`
+(swap pipeline_tag: text-to-image | image-to-image | image-to-text | image-to-video | text-to-video | text-to-speech | automatic-speech-recognition)
 
 ```python
 # General pattern
