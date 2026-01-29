@@ -526,7 +526,9 @@ def _delete_sheets(script_path: Path, force: bool = False):
 
     if not force:
         try:
-            response = input("Are you sure you want to continue? [y/N] ").strip().lower()
+            response = (
+                input("Are you sure you want to continue? [y/N] ").strip().lower()
+            )
         except (EOFError, KeyboardInterrupt):
             print("\nAborted.")
             conn.close()
