@@ -927,11 +927,13 @@ class DaggrServer:
         input_values: dict[str, Any] | None = None,
         history: dict[str, dict[str, list[dict]]] | None = None,
         session_id: str | None = None,
+        selected_results: dict[str, int] | None = None,
     ) -> dict:
         node_results = node_results or {}
         node_statuses = node_statuses or {}
         input_values = input_values or {}
         history = history or {}
+        selected_results = selected_results or {}
 
         depths = self._compute_node_depths()
 
@@ -1241,6 +1243,7 @@ class DaggrServer:
             "nodes": nodes,
             "edges": edges,
             "inputs": input_values,
+            "selected_results": selected_results,
             "history": history,
             "session_id": session_id,
         }
@@ -1425,7 +1428,7 @@ class DaggrServer:
             self.state.save_result(session_id, node_name, result)
 
         return self._build_graph_data(
-            node_results, node_statuses, input_values, {}, session_id
+            node_results, node_statuses, input_values, {}, session_id, selected_results
         )
 
     async def _execute_to_node_streaming(
@@ -1485,9 +1488,11 @@ class DaggrServer:
             if user_output is not None:
                 existing_results[node_name] = user_output
                 if can_persist:
-                    self.state.save_result(
-                        sheet_id, node_name, user_output, input_values
-                    )
+                    snapshot = {
+                        "inputs": input_values,
+                        "selected_results": selected_results,
+                    }
+                    self.state.save_result(sheet_id, node_name, user_output, snapshot)
                 continue
 
             if node_name == target_node:
@@ -1576,12 +1581,21 @@ class DaggrServer:
                     node_statuses[node_name] = "completed"
 
                     if can_persist:
-                        self.state.save_result(
-                            sheet_id, node_name, result, input_values
-                        )
+                        snapshot = {
+                            "inputs": input_values,
+                            "selected_results": selected_results,
+                        }
+                        print(f"[PROVENANCE] Saving result for {node_name}")
+                        print(f"[PROVENANCE]   selected_results: {selected_results}")
+                        self.state.save_result(sheet_id, node_name, result, snapshot)
 
                     graph_data = self._build_graph_data(
-                        node_results, node_statuses, input_values, {}, sheet_id
+                        node_results,
+                        node_statuses,
+                        input_values,
+                        {},
+                        sheet_id,
+                        selected_results,
                     )
                     graph_data["type"] = "node_complete"
                     graph_data["completed_node"] = node_name
@@ -1601,7 +1615,12 @@ class DaggrServer:
                     node_results[error_node] = {"error": str(e)}
 
             graph_data = self._build_graph_data(
-                node_results, node_statuses, input_values, {}, sheet_id
+                node_results,
+                node_statuses,
+                input_values,
+                {},
+                sheet_id,
+                selected_results,
             )
             graph_data["type"] = "error"
             graph_data["run_id"] = run_id

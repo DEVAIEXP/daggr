@@ -390,6 +390,7 @@
 			}
 			
 			if (data.data.persisted_results) {
+				console.log('[PROVENANCE] Loading persisted_results:', data.data.persisted_results);
 				for (const [nodeName, results] of Object.entries(data.data.persisted_results as Record<string, any[]>)) {
 					if (results && results.length > 0) {
 						const node = data.data.nodes?.find((n: GraphNode) => n.name === nodeName);
@@ -398,6 +399,8 @@
 							nodeResults[nodeName] = results.map((entry: any) => {
 								const result = entry?.result !== undefined ? entry.result : entry;
 								const inputsSnapshot = entry?.inputs_snapshot || null;
+								console.log(`[PROVENANCE] ${nodeName} entry:`, entry);
+								console.log(`[PROVENANCE] ${nodeName} inputs_snapshot:`, inputsSnapshot);
 								snapshots.push(inputsSnapshot);
 								
 								return node.output_components.map((comp: GradioComponentData) => {
@@ -498,7 +501,11 @@
 							}
 							const resultSnapshot = node.output_components.map((c: GradioComponentData) => ({ ...c }));
 							nodeResults[completedNode] = [...nodeResults[completedNode], resultSnapshot];
-							nodeInputsSnapshots[completedNode] = [...nodeInputsSnapshots[completedNode], data.inputs ? { ...data.inputs } : null];
+							const snapshot = data.inputs || data.selected_results ? {
+								inputs: data.inputs || {},
+								selected_results: data.selected_results || {},
+							} : null;
+							nodeInputsSnapshots[completedNode] = [...nodeInputsSnapshots[completedNode], snapshot];
 							selectedResultIndex[completedNode] = nodeResults[completedNode].length - 1;
 
 							if (isOnSpaces && !hfUser && !hasShownPersistencePrompt) {
@@ -949,13 +956,33 @@
 
 	function restoreInputsSnapshot(nodeName: string, index: number) {
 		const snapshots = nodeInputsSnapshots[nodeName];
-		if (!snapshots || !snapshots[index]) return;
+		console.log(`[PROVENANCE] restoreInputsSnapshot(${nodeName}, ${index})`);
+		console.log(`[PROVENANCE]   snapshots for ${nodeName}:`, snapshots);
+		if (!snapshots || !snapshots[index]) {
+			console.log(`[PROVENANCE]   No snapshot found at index ${index}`);
+			return;
+		}
 		
 		const snapshot = snapshots[index];
-		for (const [inputNodeId, nodeInputs] of Object.entries(snapshot)) {
+		console.log(`[PROVENANCE]   snapshot:`, snapshot);
+		
+		const inputs = snapshot.inputs || snapshot;
+		for (const [inputNodeId, nodeInputs] of Object.entries(inputs)) {
 			if (typeof nodeInputs === 'object' && nodeInputs !== null) {
 				inputValues[inputNodeId] = { ...inputValues[inputNodeId], ...nodeInputs };
 			}
+		}
+		
+		if (snapshot.selected_results) {
+			console.log(`[PROVENANCE]   Restoring selected_results:`, snapshot.selected_results);
+			for (const [upstreamNode, resultIdx] of Object.entries(snapshot.selected_results)) {
+				if (typeof resultIdx === 'number') {
+					console.log(`[PROVENANCE]   Setting ${upstreamNode} to index ${resultIdx}`);
+					selectedResultIndex[upstreamNode] = resultIdx;
+				}
+			}
+		} else {
+			console.log(`[PROVENANCE]   No selected_results in snapshot`);
 		}
 	}
 
