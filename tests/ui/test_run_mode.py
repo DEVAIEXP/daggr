@@ -47,10 +47,14 @@ def test_run_mode_dropdown_and_single_step(page: Page, temp_db: str):
         run_mode_menu = page.locator(".run-mode-menu")
         expect(run_mode_menu).to_be_visible()
 
-        step_option = run_mode_menu.locator(".run-mode-option:has-text('Run this step')")
+        step_option = run_mode_menu.locator(
+            ".run-mode-option:has-text('Run this step')"
+        )
         expect(step_option).to_be_visible()
 
-        to_here_option = run_mode_menu.locator(".run-mode-option:has-text('Run to here')")
+        to_here_option = run_mode_menu.locator(
+            ".run-mode-option:has-text('Run to here')"
+        )
         expect(to_here_option).to_be_visible()
 
         # Default is now "Run this step"
@@ -79,7 +83,9 @@ def test_run_mode_dropdown_and_single_step(page: Page, temp_db: str):
         run_mode_toggle.click()
         expect(run_mode_menu).to_be_visible()
 
-        step_option = page.locator(".run-mode-menu .run-mode-option:has-text('Run this step')")
+        step_option = page.locator(
+            ".run-mode-menu .run-mode-option:has-text('Run this step')"
+        )
         step_option.click()
 
         page.wait_for_function(
