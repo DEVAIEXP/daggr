@@ -107,7 +107,7 @@
 		</div>
 	{:else if value !== null && value !== undefined}
 		<div class="json-content">
-			<JsonNode value={value} depth={0} maxOpen={typeof open === 'number' ? open : (open ? Infinity : 0)} {showIndices} />
+			{@render JsonNode({ value, depth: 0, maxOpen: typeof open === 'number' ? open : (open ? Infinity : 0), showIndices })}
 		</div>
 	{:else}
 		<div class="gr-empty">null</div>
