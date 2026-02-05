@@ -107,7 +107,7 @@ Each node has **input ports** and **output ports**, which correspond to the node
 - A previous node's output port → creates an edge, data flows automatically
 - A Gradio component → creates a standalone input in the UI
 - A fixed value → passed directly, doesn't appear in UI
-- A callable → called each time the node runs (useful for random seeds)
+- A `Callable` → called each time the node runs (useful for random seeds)
 
 **Output ports** can be connected to:
 - A Gradio component → displays the output in the node's card
