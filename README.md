@@ -13,7 +13,7 @@
 
 
 
-https://github.com/user-attachments/assets/2cfe49c0-3118-4570-b2bd-f87c333836b5
+<img width="1462" height="508" alt="Screenshot 2026-01-26 at 1 01 58 PM" src="https://github.com/user-attachments/assets/b751abd8-e143-4882-817b-036fb66a6d92" />
 
 
 ## Installation
@@ -74,9 +74,8 @@ graph = Graph(
 graph.launch()
 ```
 
-Run `daggr app.py` to start the app with hot reloading (or `python app.py` for standard execution). You should see a Daggr app like this that you can use to generate images with a transparent background!
+Run `daggr app.py` to start the app with hot reloading (or `python app.py` for standard execution). You should see a Daggr app like the one shown above that you can use to generate images with a transparent background!
 
-<img width="1462" height="508" alt="Screenshot 2026-01-26 at 1 01 58 PM" src="https://github.com/user-attachments/assets/b751abd8-e143-4882-817b-036fb66a6d92" />
 
 
 ## When to (Not) Use Daggr
