@@ -63,15 +63,6 @@ export interface GraphEdge {
 	is_gathered?: boolean;
 }
 
-export interface DependencyWarning {
-	node_name: string;
-	dep_type: 'space' | 'model';
-	dep_id: string;
-	old_hash: string;
-	new_hash: string;
-	message: string;
-}
-
 export interface CanvasData {
 	name: string;
 	nodes: GraphNode[];
@@ -80,6 +71,5 @@ export interface CanvasData {
 	session_id?: string;
 	run_id?: string;
 	completed_node?: string;
-	dependency_warnings?: DependencyWarning[];
 }
 
