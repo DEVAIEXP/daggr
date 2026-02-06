@@ -516,6 +516,11 @@ class DaggrServer:
                                 }
                             )
 
+                    elif action == "clear_sheet":
+                        if user_id and current_sheet_id:
+                            self.state.clear_sheet_data(current_sheet_id)
+                            await websocket.send_json({"type": "sheet_cleared"})
+
             except WebSocketDisconnect:
                 for task in running_tasks.values():
                     task.cancel()
