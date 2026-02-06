@@ -41,6 +41,7 @@
 	let runModeMenuOpen = $state<string | null>(null);
 	let runModeVersion = $state(0);
 	let highlightedNodes = $state<Set<string>>(new Set());
+	let nodeRunIds = $state<Record<string, string>>({});
 
 	let sheets = $state<Sheet[]>([]);
 	let currentSheetId = $state<string | null>(null);
@@ -480,10 +481,24 @@
 			if (startedNode) {
 				runningNodes.add(startedNode);
 				runningNodes = new Set(runningNodes);
+				if (data.run_id) {
+					nodeRunIds[startedNode] = data.run_id;
+				}
 				nodeStartTimes[startedNode] = Date.now();
 				delete nodeErrors[startedNode];
 				startTimer();
 			}
+		} else if (data.type === 'cancelled') {
+			const cancelledRunId = data.run_id;
+			for (const [nodeName, runId] of Object.entries(nodeRunIds)) {
+				if (runId === cancelledRunId) {
+					runningNodes.delete(nodeName);
+					delete nodeStartTimes[nodeName];
+					delete nodeRunIds[nodeName];
+				}
+			}
+			runningNodes = new Set(runningNodes);
+			stopTimerIfNoRunning();
 		} else if (data.type === 'error' && data.error) {
 			console.error('[daggr] server error:', data.error);
 			const errorNode = data.node || data.completed_node;
@@ -493,6 +508,7 @@
 			const nodesToClear = data.nodes_to_clear || (errorNode ? [errorNode] : []);
 			for (const nodeName of nodesToClear) {
 				delete nodeStartTimes[nodeName];
+				delete nodeRunIds[nodeName];
 				runningNodes.delete(nodeName);
 			}
 			runningNodes = new Set(runningNodes);
@@ -503,6 +519,7 @@
 			if (completedNode) {
 				runningNodes.delete(completedNode);
 				runningNodes = new Set(runningNodes);
+				delete nodeRunIds[completedNode];
 			}
 			
 			if (completedNode && data.execution_time_ms != null) {
@@ -616,11 +633,9 @@
 			for (const edge of edges) {
 				if (edge.to_node === current.replace(/ /g, '_').replace(/-/g, '_')) {
 					const sourceNode = nodes.find(n => n.id === edge.from_node);
-					if (sourceNode && !ancestors.has(sourceNode.name)) {
+					if (sourceNode && !ancestors.has(sourceNode.name) && !sourceNode.is_input_node) {
 						ancestors.add(sourceNode.name);
-						if (!sourceNode.is_input_node) {
-							toVisit.push(sourceNode.name);
-						}
+						toVisit.push(sourceNode.name);
 					}
 				}
 			}
@@ -910,6 +925,9 @@
 		if (!target.closest('.run-controls')) {
 			runModeMenuOpen = null;
 		}
+		if (!target.closest('.sheet-selector')) {
+			sheetDropdownOpen = false;
+		}
 	}
 
 	function handleMouseMove(e: MouseEvent) {
@@ -972,16 +990,12 @@
 
 	function handleRunNode(e: MouseEvent, nodeName: string, runMode?: 'step' | 'toHere') {
 		e.stopPropagation();
-		
-		if (runningNodes.has(nodeName)) {
-			return;
-		}
-		
 		const mode = runMode ?? nodeRunModes[nodeName] ?? 'toHere';
 		const runId = `${nodeName}_${Date.now()}_${Math.random().toString(36).slice(2)}`;
 		
 		runningNodes.add(nodeName);
 		runningNodes = new Set(runningNodes);
+		nodeRunIds[nodeName] = runId;
 		delete nodeExecutionTimes[nodeName];
 		
 		if (ws && wsConnected) {
@@ -995,6 +1009,18 @@
 				sheet_id: currentSheetId,
 				hf_token: getStoredToken(),
 				run_ancestors: mode === 'toHere'
+			}));
+		}
+	}
+
+	function handleCancelNode(e: MouseEvent, nodeName: string) {
+		e.stopPropagation();
+		const runId = nodeRunIds[nodeName];
+		if (runId && ws && wsConnected) {
+			ws.send(JSON.stringify({
+				action: 'cancel',
+				run_id: runId,
+				node_name: nodeName,
 			}));
 		}
 	}
@@ -1185,6 +1211,34 @@
 			editingSheetName = false;
 		}
 	}
+
+	function resetSheetValues() {
+		if (confirm('Are you sure you want to reset all component values? This cannot be undone.')) {
+			inputValues = {};
+			nodeResults = {};
+			selectedResultIndex = {};
+			itemListValues = {};
+			selectedVariants = {};
+			nodeErrors = {};
+			nodeExecutionTimes = {};
+			nodeInputsSnapshots = {};
+			nodeAvgTimes = {};
+			nodeStartTimes = {};
+			if (graphData?.nodes) {
+				for (const node of graphData.nodes) {
+					if (node.output_components) {
+						for (const comp of node.output_components) {
+							comp.value = null;
+						}
+					}
+				}
+				graphData = { ...graphData };
+			}
+			if (ws && wsConnected && canPersist && currentSheetId) {
+				ws.send(JSON.stringify({ action: 'clear_sheet' }));
+			}
+		}
+	}
 </script>
 
 <div 
@@ -1235,12 +1289,23 @@
 					{#if !node.is_input_node}
 						{#key runModeVersion}
 						<div class="run-controls">
+							{#if runningNodes.has(node.name)}
+							<span 
+								class="run-btn running"
+								onclick={(e) => handleCancelNode(e, node.name)}
+								title="Stop"
+								role="button"
+								tabindex="0"
+							>
+								<svg class="run-icon-svg" viewBox="0 0 12 12" fill="currentColor">
+									<rect x="2" y="2" width="8" height="8" rx="1"/>
+								</svg>
+							</span>
+							{:else}
 							<span 
 								class="run-btn"
-								class:running={runningNodes.has(node.name)}
-								class:disabled={runningNodes.has(node.name)}
 								onclick={(e) => handleRunNode(e, node.name)}
-								title={runningNodes.has(node.name) ? "Running..." : ((nodeRunModes[node.name] ?? 'toHere') === 'toHere' ? "Run to here" : "Run this step")}
+								title={(nodeRunModes[node.name] ?? 'toHere') === 'toHere' ? "Run to here" : "Run this step"}
 								role="button"
 								tabindex="0"
 							>
@@ -1254,10 +1319,8 @@
 										<path d="M3 1 L11 6 L3 11 Z"/>
 									</svg>
 								{/if}
-								{#if runningNodes.has(node.name)}
-									<span class="run-badge"></span>
-								{/if}
 							</span>
+							{/if}
 							<span 
 								class="run-mode-toggle"
 								onclick={(e) => toggleRunModeMenu(e, node.name)}
@@ -1418,7 +1481,12 @@
 		<button class="zoom-btn" onclick={zoomOut} title="Zoom out">−</button>
 		<span class="zoom-level">{zoomPercent}%</span>
 		<button class="zoom-btn" onclick={zoomIn} title="Zoom in">+</button>
-		<button class="zoom-btn fit-btn" onclick={zoomToFit} title="Fit all nodes">⊡</button>
+		<button class="zoom-btn fit-btn" onclick={zoomToFit} title="Fit all nodes">
+			<svg viewBox="0 0 16 16" fill="currentColor" class="fit-icon">
+				<path d="M2 0a2 2 0 0 0-2 2v2h1.5V2a.5.5 0 0 1 .5-.5h2V0H2zM12 0v1.5h2a.5.5 0 0 1 .5.5v2H16V2a2 2 0 0 0-2-2h-2zM0 12v2a2 2 0 0 0 2 2h2v-1.5H2a.5.5 0 0 1-.5-.5v-2H0zM14.5 12v2a.5.5 0 0 1-.5.5h-2V16h2a2 2 0 0 0 2-2v-2h-1.5z"/>
+				<rect x="4.5" y="4.5" width="7" height="7" rx="1" stroke="currentColor" stroke-width="1.5" fill="none"/>
+			</svg>
+		</button>
 	</div>
 
 	<div class="title-bar">
@@ -1439,12 +1507,29 @@
 					<button 
 						class="sheet-current"
 						onclick={() => sheetDropdownOpen = !sheetDropdownOpen}
-						ondblclick={startEditingSheetName}
-						title="Double-click to rename"
 					>
 						<span class="sheet-name">{currentSheet?.name || 'Sheet'}</span>
 						<svg class="dropdown-arrow" viewBox="0 0 10 6" fill="currentColor">
 							<path d="M1 1 L5 5 L9 1" stroke="currentColor" stroke-width="1.5" fill="none"/>
+						</svg>
+					</button>
+					<button 
+						class="sheet-action-btn"
+						onclick={startEditingSheetName}
+						title="Rename sheet"
+					>
+						<svg viewBox="0 0 16 16" fill="currentColor">
+							<path d="M12.146.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1 0 .708l-10 10a.5.5 0 0 1-.168.11l-5 2a.5.5 0 0 1-.65-.65l2-5a.5.5 0 0 1 .11-.168l10-10zM11.207 2.5 13.5 4.793 14.793 3.5 12.5 1.207 11.207 2.5zm1.586 3L10.5 3.207 4 9.707V10h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.5h.293l6.5-6.5zm-9.761 5.175-.106.106-1.528 3.821 3.821-1.528.106-.106A.5.5 0 0 1 5 12.5V12h-.5a.5.5 0 0 1-.5-.5V11h-.5a.5.5 0 0 1-.468-.325z"/>
+						</svg>
+					</button>
+					<button 
+						class="sheet-action-btn sheet-reset-btn"
+						onclick={resetSheetValues}
+						title="Reset all values"
+					>
+						<svg viewBox="0 0 16 16" fill="currentColor">
+							<path d="M5.5 5.5A.5.5 0 0 1 6 6v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm2.5 0a.5.5 0 0 1 .5.5v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm3 .5a.5.5 0 0 0-1 0v6a.5.5 0 0 0 1 0V6z"/>
+							<path fill-rule="evenodd" d="M14.5 3a1 1 0 0 1-1 1H13v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V4h-.5a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1H6a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1h3.5a1 1 0 0 1 1 1v1zM4.118 4 4 4.059V13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V4.059L11.882 4H4.118zM2.5 3V2h11v1h-11z"/>
 						</svg>
 					</button>
 				{/if}
@@ -1603,6 +1688,9 @@
 
 	.sheet-selector {
 		position: relative;
+		display: flex;
+		align-items: center;
+		gap: 2px;
 	}
 
 	.sheet-current {
@@ -1652,6 +1740,36 @@
 		width: 10px;
 		height: 6px;
 		opacity: 0.6;
+	}
+
+	.sheet-action-btn {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		background: transparent;
+		border: none;
+		color: var(--body-text-color-subdued);
+		cursor: pointer;
+		padding: 4px;
+		border-radius: 4px;
+		transition: all 0.15s;
+		opacity: 0.6;
+	}
+
+	.sheet-action-btn:hover {
+		background: color-mix(in srgb, var(--color-accent) 15%, transparent);
+		color: var(--color-accent);
+		opacity: 1;
+	}
+
+	.sheet-action-btn svg {
+		width: 12px;
+		height: 12px;
+	}
+
+	.sheet-reset-btn:hover {
+		background: color-mix(in srgb, var(--error-text-color) 15%, transparent);
+		color: var(--error-text-color);
 	}
 
 	.sheet-dropdown {
@@ -1973,11 +2091,15 @@
 	}
 
 	.fit-btn {
-		font-size: 14px;
 		margin-left: 4px;
 		border-left: 1px solid color-mix(in srgb, var(--color-accent) 15%, transparent);
 		padding-left: 8px;
 		border-radius: 0 4px 4px 0;
+	}
+
+	.fit-icon {
+		width: 12px;
+		height: 12px;
 	}
 
 	.zoom-level {
