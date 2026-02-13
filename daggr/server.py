@@ -1068,10 +1068,10 @@ class DaggrServer:
 
             if isinstance(node, ChoiceNode):
                 continue
-            
+
             if getattr(node, "embed_inputs", False):
                 continue
-            
+
             if node._input_components:
                 for idx, (port_name, comp) in enumerate(node._input_components.items()):
                     comp_id = id(comp)
@@ -1238,9 +1238,9 @@ class DaggrServer:
             node_id = node_name.replace(" ", "_").replace("-", "_")
 
             embedded_input_components = []
-            if getattr(node, "embed_inputs", False):                
+            if getattr(node, "embed_inputs", False):
                 embedded_input_components = self._build_input_components(node)
-                
+
             input_ports_data = []
             for port in node._input_ports or []:
                 if port in node._fixed_inputs:
@@ -1329,7 +1329,7 @@ class DaggrServer:
                     "variants": variants,
                     "selected_variant": selected_variant,
                     "validation_error": validation_error,
-                    "embed_inputs": getattr(node, "_embed_inputs", False)
+                    "embed_inputs": getattr(node, "_embed_inputs", False),
                 }
             )
 
@@ -1486,12 +1486,12 @@ class DaggrServer:
         entry_inputs: dict[str, dict[str, Any]] = {}
         for node_name in nodes_to_execute:
             node = self.graph.nodes[node_name]
-               
+
             current_node_id = node_name.replace(" ", "_").replace("-", "_")
 
             if node._input_components:
                 node_inputs = {}
-               
+
                 for port_name in node._input_components:
                     input_node_name = f"{node_name}__{port_name}"
                     input_node_id = input_node_name.replace(" ", "_").replace("-", "_")
@@ -1499,10 +1499,10 @@ class DaggrServer:
                         value = input_values[input_node_id].get("value")
                         if value is not None:
                             node_inputs[port_name] = value
-               
+
                 if current_node_id in input_values:
-                    saved_values = input_values[current_node_id]               
-                    for port_name in node._input_components:                        
+                    saved_values = input_values[current_node_id]
+                    for port_name in node._input_components:
                         if port_name in saved_values:
                             val = saved_values[port_name]
                             if val is not None:
@@ -1510,7 +1510,7 @@ class DaggrServer:
 
                 if node_inputs:
                     entry_inputs[node_name] = node_inputs
-                                            
+
             elif isinstance(node, InteractionNode):
                 value = input_values.get(node_name, "")
                 port = node._input_ports[0] if node._input_ports else "input"
@@ -1601,7 +1601,7 @@ class DaggrServer:
 
             if node._input_components:
                 node_inputs = {}
-               
+
                 for port_name in node._input_components:
                     input_node_name = f"{node_name}__{port_name}"
                     input_node_id = input_node_name.replace(" ", "_").replace("-", "_")
@@ -1609,10 +1609,10 @@ class DaggrServer:
                         value = input_values[input_node_id].get("value")
                         if value is not None:
                             node_inputs[port_name] = value
-               
+
                 if current_node_id in input_values:
-                    saved_values = input_values[current_node_id]               
-                    for port_name in node._input_components:                        
+                    saved_values = input_values[current_node_id]
+                    for port_name in node._input_components:
                         if port_name in saved_values:
                             val = saved_values[port_name]
                             if val is not None:
@@ -1620,7 +1620,7 @@ class DaggrServer:
 
                 if node_inputs:
                     entry_inputs[node_name] = node_inputs
-                                            
+
             elif isinstance(node, InteractionNode):
                 value = input_values.get(node_name, "")
                 port = node._input_ports[0] if node._input_ports else "input"

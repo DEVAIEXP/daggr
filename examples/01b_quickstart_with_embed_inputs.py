@@ -5,7 +5,6 @@ import gradio as gr
 
 from daggr import GradioNode, Graph
 
-    
 glm_image = GradioNode(
     "hf-applications/Z-Image-Turbo",
     api_name="/generate_image",
@@ -16,20 +15,14 @@ glm_image = GradioNode(
             lines=3,
         ),
         "height": gr.Slider(
-            label="Height",
-            value=1024,
-            minimum=1024,
-            maximum=4096,
-            step=128),
+            label="Height", value=1024, minimum=1024, maximum=4096, step=128
+        ),
         "width": gr.Slider(
-            label="Width",
-            value=1024,
-            minimum=1024,
-            maximum=4096,
-            step=128),        
+            label="Width", value=1024, minimum=1024, maximum=4096, step=128
+        ),
         "seed": random.random,  # Functions are rerun every time the workflow is run (not shown in the canvas)
-    },    
-    embed_inputs=True, # Display inputs inside node
+    },
+    embed_inputs=True,  # Display inputs inside node
     outputs={
         "image": gr.Image(
             label="Image"  # Display original image

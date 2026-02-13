@@ -110,19 +110,26 @@ class Node(ABC):
     @property
     def embed_inputs(self) -> bool:
         return self._embed_inputs
-    
+
     @name.setter
     def name(self, value: str) -> None:
         self._name = value
         self._name_explicitly_set = True
-     
+
     def __getattr__(self, name: str) -> Port:
         if name.startswith("_"):
             raise AttributeError(name)
         return Port(self, name)
 
     def __dir__(self) -> list[str]:
-        base = ["_name", "_inputs", "_outputs", "_input_ports", "_embed_inputs", "_output_ports"]
+        base = [
+            "_name",
+            "_inputs",
+            "_outputs",
+            "_input_ports",
+            "_embed_inputs",
+            "_output_ports",
+        ]
         return base + self._input_ports + self._output_ports
 
     def __or__(self, other: Node) -> ChoiceNode:
@@ -691,7 +698,7 @@ class FnNode(Node):
         self._concurrent = concurrent
         self._concurrency_group = concurrency_group
         self._max_concurrent = max_concurrent
-                
+
         if not self._name:
             self._name = self._fn.__name__
 
