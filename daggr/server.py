@@ -445,6 +445,7 @@ class DaggrServer:
                             persisted_inputs = {}
                             persisted_results: dict[str, list[Any]] = {}
                             persisted_transform = None
+                            persisted_layout = {}
 
                             if user_id and sheet_id:
                                 sheet = self.state.get_sheet(sheet_id)
