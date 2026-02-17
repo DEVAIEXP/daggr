@@ -1967,7 +1967,19 @@
 		right: 16px;
 		z-index: 100;
 	}
-
+	.login-btn {
+		background: color-mix(in srgb, var(--block-background-fill) 90%, transparent);
+		border: 1px solid color-mix(in srgb, var(--color-accent) 20%, transparent);
+		border-radius: 8px;
+		padding: 8px 12px;
+		color: var(--body-text-color-subdued);
+		cursor: pointer;
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		font-size: 12px;
+		transition: all 0.2s;
+	}
 	.logout-btn {
         background: transparent;
         border: none;
