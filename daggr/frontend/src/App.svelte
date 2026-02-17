@@ -61,7 +61,21 @@
 	let hasShownPersistencePrompt = $state(false);
 
 	const HF_TOKEN_KEY = 'daggr_hf_token';
+	let isDark = $state(true);
 
+	function toggleTheme() {
+		isDark = !isDark;
+		const theme = isDark ? 'dark' : 'light';
+		localStorage.setItem('theme', theme);
+		
+		if (isDark) {
+			document.documentElement.classList.add('dark');
+			document.body.classList.add('dark');
+		} else {
+			document.documentElement.classList.remove('dark');
+			document.body.classList.remove('dark');
+		}
+	}	
 	function getStoredToken(): string | null {
 		try {
 			return localStorage.getItem(HF_TOKEN_KEY);
@@ -581,6 +595,18 @@
 	}
 
 	onMount(() => {
+		const savedTheme = localStorage.getItem('theme');
+		const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+		
+		isDark = savedTheme ? savedTheme === 'dark' : prefersDark;
+		
+		if (isDark) {
+			document.documentElement.classList.add('dark');
+			document.body.classList.add('dark');
+		} else {
+			document.documentElement.classList.remove('dark');
+			document.body.classList.remove('dark');
+		}
 		async function initialize() {
 			await fetchUserInfo();
 			
@@ -1322,7 +1348,7 @@
 									</svg>
 								{/if}
 							</span>
-							{/if}
+							{/if}							
 							<span 
 								class="run-mode-toggle"
 								onclick={(e) => toggleRunModeMenu(e, node.name)}
@@ -1565,57 +1591,76 @@
 			</div>
 		{/if}
 	</div>
-
-	{#if !wsConnected}
-		<div class="connection-status">Connecting...</div>
-	{:else if !graphData}
-		<div class="connection-status">Loading graph...</div>
-	{:else if hfUser}
-		<div class="hf-user">
-			{#if hfUser.avatar_url}
-				<img src={hfUser.avatar_url} alt="" class="hf-avatar" />
-			{/if}
-			<span class="hf-username">{hfUser.username}</span>
-			<button class="logout-btn" onclick={handleLogout} title="Logout">×</button>
-			<div class="hf-tooltip">
-				Your Hugging Face token is used for all GradioNode and InferenceNode calls. This enables ZeroGPU quota tracking and access to private Spaces and gated models.
-			</div>
-		</div>
-	{:else}
-		<div class="login-section">
-			<button class="login-btn" onclick={() => showLoginTooltip = !showLoginTooltip} title="Login with Hugging Face">
-				<img src="/daggr-assets/hf-logo-pirate.png" alt="HF" class="hf-logo-icon" />
-				<span>Login</span>
-			</button>
-			{#if showLoginTooltip}
-				<div class="login-tooltip">
-					<div class="login-tooltip-header">Login with Hugging Face</div>
-					{#if isOnSpaces}
-						<p class="login-tooltip-desc login-tooltip-highlight">
-							Login to save your outputs and resume your work later.
-						</p>
-					{/if}
-					<p class="login-tooltip-desc">
-						Your token is used to authenticate with Hugging Face APIs for InferenceNode calls and ZeroGPU-powered Spaces. Create a token with <strong>Read</strong> scope (or <strong>Fine-grained</strong> with Inference API access) at <a href="https://huggingface.co/settings/tokens" target="_blank" rel="noopener">huggingface.co/settings/tokens</a>
-					</p>
-					<input
-						type="password"
-						class="login-token-input"
-						placeholder="hf_..."
-						bind:value={tokenInputValue}
-						onkeydown={(e) => e.key === 'Enter' && handleLogin()}
-						disabled={loginLoading}
-					/>
-					{#if loginError}
-						<div class="login-error">{loginError}</div>
-					{/if}
-					<button class="login-submit-btn" onclick={handleLogin} disabled={loginLoading}>
-						{loginLoading ? 'Verifying...' : 'Login'}
-					</button>
+	<div class="user-controls-wrapper">		
+		{#if !wsConnected}
+			<div class="status-pill info">Connecting...</div>
+		{:else if !graphData}
+			<div class="status-pill info">Loading graph...</div>
+		{/if}		
+		{#if hfUser}
+			<div class="hf-user">
+				{#if hfUser.avatar_url}
+					<img src={hfUser.avatar_url} alt="" class="hf-avatar" />
+				{/if}
+				<span class="hf-username">{hfUser.username}</span>
+				<button class="logout-btn"
+					onclick={(e) => { 
+					e.stopPropagation();
+					handleLogout(); 
+				}}
+				title="Logout">×
+				</button>
+				<div class="hf-tooltip">
+					 Your Hugging Face token is used for all GradioNode and InferenceNode calls. This enables ZeroGPU quota tracking and access to private Spaces and gated models.
 				</div>
+			</div>
+		{:else if wsConnected && graphData}
+			<div class="login-section">
+				<button class="login-btn" onclick={() => showLoginTooltip = !showLoginTooltip}>
+					<img src="/daggr-assets/hf-logo-pirate.png" alt="HF" class="hf-logo-icon" />
+					<span>Login</span>
+				</button>
+				{#if showLoginTooltip}
+					<div class="login-tooltip">
+						<div class="login-tooltip-header">Login with Hugging Face</div>
+						{#if isOnSpaces}
+							<p class="login-tooltip-desc login-tooltip-highlight">
+								Login to save your outputs and resume your work later.
+							</p>
+						{/if}
+						<p class="login-tooltip-desc">
+							Your token is used to authenticate with Hugging Face APIs for InferenceNode calls and ZeroGPU-powered Spaces. Create a token with <strong>Read</strong> scope (or <strong>Fine-grained</strong> with Inference API access) at <a href="https://huggingface.co/settings/tokens" target="_blank" rel="noopener">huggingface.co/settings/tokens</a>
+						</p>
+						<input
+							type="password"
+							class="login-token-input"
+							placeholder="hf_..."
+							bind:value={tokenInputValue}
+							onkeydown={(e) => e.key === 'Enter' && handleLogin()}
+							disabled={loginLoading}
+						/>
+						{#if loginError}
+							<div class="login-error">{loginError}</div>
+						{/if}
+						<button class="login-submit-btn" onclick={handleLogin} disabled={loginLoading}>
+							{loginLoading ? 'Verifying...' : 'Login'}
+						</button>
+					</div>
+				{/if}
+			</div>
+		{/if}
+		<button 
+			class="theme-btn" 
+			onclick={toggleTheme} 
+			title={isDark ? "Switch to light mode" : "Switch to dark mode"}
+		>
+			{#if isDark}				
+				<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+			{:else}				
+				<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
 			{/if}
-		</div>
-	{/if}
+    	</button>
+	</div>
 </div>
 
 <style>
@@ -1891,29 +1936,21 @@
 		font-size: 12px;
 		line-height: 1.5;
 		color: var(--body-text-color-subdued);
+		white-space: normal;
+        text-overflow: clip;
+        overflow: visible;
+        text-align: left;        
 		opacity: 0;
 		visibility: hidden;
 		transition: opacity 0.2s, visibility 0.2s;
 		pointer-events: none;
 		box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+		z-index: 1200;
 	}
 
 	.hf-user:hover .hf-tooltip {
 		opacity: 1;
 		visibility: visible;
-	}
-
-	.logout-btn {
-		background: transparent;
-		border: none;
-		color: var(--neutral-500);
-		font-size: 16px;
-		cursor: pointer;
-		padding: 0 4px;
-		margin-left: 4px;
-		line-height: 1;
-		opacity: 0;
-		transition: opacity 0.2s, color 0.2s;
 	}
 
 	.hf-user:hover .logout-btn {
@@ -1931,19 +1968,18 @@
 		z-index: 100;
 	}
 
-	.login-btn {
-		background: color-mix(in srgb, var(--block-background-fill) 90%, transparent);
-		border: 1px solid color-mix(in srgb, var(--color-accent) 20%, transparent);
-		border-radius: 8px;
-		padding: 8px 12px;
-		color: var(--body-text-color-subdued);
-		cursor: pointer;
-		display: flex;
-		align-items: center;
-		gap: 8px;
-		font-size: 12px;
-		transition: all 0.2s;
-	}
+	.logout-btn {
+        background: transparent;
+        border: none;
+        color: var(--neutral-500);
+        font-size: 18px;
+        cursor: pointer;
+        margin-left: 4px;
+        opacity: 0;
+        transition: opacity 0.2s;
+		position: relative;
+    	z-index: 10;
+    }
 
 	.login-btn:hover {
 		border-color: color-mix(in srgb, var(--color-accent) 40%, transparent);
@@ -1955,11 +1991,11 @@
 		height: 18px;
 		object-fit: contain;
 	}
-
 	.login-tooltip {
 		position: absolute;
 		top: calc(100% + 8px);
 		right: 0;
+		z-index: 1200;
 		background: color-mix(in srgb, var(--block-background-fill) 98%, transparent);
 		border: 1px solid color-mix(in srgb, var(--color-accent) 30%, transparent);
 		border-radius: 10px;
@@ -1967,7 +2003,6 @@
 		width: 280px;
 		box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
 	}
-
 	.login-tooltip-header {
 		font-size: 14px;
 		font-weight: 600;
@@ -2542,4 +2577,63 @@
 		min-width: 32px;
 		text-align: center;
 	}
+	.user-controls-wrapper {
+		position: fixed;
+		top: 16px;
+		right: 16px;
+		display: flex;
+		align-items: center;
+		gap: 12px;
+		z-index: 2000;
+		cursor: default; 
+		pointer-events: auto; 
+	}
+	.status-pill, .hf-user, .login-section {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        height: 36px;
+        padding: 0 12px;
+        background: color-mix(in srgb, var(--block-background-fill) 90%, transparent);
+        border: 1px solid color-mix(in srgb, var(--color-accent) 20%, transparent);
+        border-radius: 8px;
+        backdrop-filter: blur(4px);
+        font-size: 13px;
+        color: var(--body-text-color-subdued);
+    }    
+    .status-pill.info {
+        border-color: var(--color-accent);
+        color: var(--color-accent);
+        font-weight: 600;
+    }
+
+	.hf-user, .login-section {
+        position: relative !important;
+        top: auto !important;
+        right: auto !important;
+    }
+	
+	.theme-btn {
+        width: 36px;
+        height: 36px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: color-mix(in srgb, var(--block-background-fill) 90%, transparent);
+        border: 1px solid color-mix(in srgb, var(--color-accent) 20%, transparent);
+        border-radius: 8px;
+        color: var(--body-text-color-subdued);
+        cursor: pointer;
+        transition: all 0.2s;
+        backdrop-filter: blur(4px);
+    }
+	.theme-btn, .login-btn, .logout-btn {
+        cursor: pointer !important;
+    }
+	.theme-btn:hover {
+        border-color: var(--color-accent);
+        color: var(--color-accent);
+        background: color-mix(in srgb, var(--color-accent) 5%, transparent);
+    }
+	
 </style>
