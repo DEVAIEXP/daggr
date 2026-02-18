@@ -63,19 +63,22 @@
 	const HF_TOKEN_KEY = 'daggr_hf_token';
 	let isDark = $state(true);
 
-	function toggleTheme() {
-		isDark = !isDark;
-		const theme = isDark ? 'dark' : 'light';
-		localStorage.setItem('theme', theme);
-		
-		if (isDark) {
+	function applyTheme(dark: boolean) {
+		if (dark) {
 			document.documentElement.classList.add('dark');
 			document.body.classList.add('dark');
 		} else {
 			document.documentElement.classList.remove('dark');
 			document.body.classList.remove('dark');
 		}
-	}	
+	}
+
+	function toggleTheme() {
+		isDark = !isDark;
+		localStorage.setItem('theme', isDark ? 'dark' : 'light');
+		applyTheme(isDark);
+	}
+
 	function getStoredToken(): string | null {
 		try {
 			return localStorage.getItem(HF_TOKEN_KEY);
@@ -597,16 +600,9 @@
 	onMount(() => {
 		const savedTheme = localStorage.getItem('theme');
 		const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-		
 		isDark = savedTheme ? savedTheme === 'dark' : prefersDark;
-		
-		if (isDark) {
-			document.documentElement.classList.add('dark');
-			document.body.classList.add('dark');
-		} else {
-			document.documentElement.classList.remove('dark');
-			document.body.classList.remove('dark');
-		}
+		applyTheme(isDark);
+
 		async function initialize() {
 			await fetchUserInfo();
 			
@@ -1269,6 +1265,7 @@
 
 <div 
 	class="canvas"
+	class:dark={isDark}
 	bind:this={canvasEl}
 	onmousedown={handleMouseDown}
 	onmousemove={handleMouseMove}
@@ -1347,10 +1344,10 @@
 										<path d="M3 1 L11 6 L3 11 Z"/>
 									</svg>
 								{/if}
-							</span>
-							{/if}							
-							<span 
-								class="run-mode-toggle"
+						</span>
+						{/if}
+						<span 
+							class="run-mode-toggle"
 								onclick={(e) => toggleRunModeMenu(e, node.name)}
 								role="button"
 								tabindex="0"
@@ -1505,7 +1502,7 @@
 	</div>
 
 	<div class="zoom-controls">
-		<img src="/daggr-assets/logo_dark_small.png" alt="daggr" class="daggr-logo" />
+		<img src={isDark ? "/daggr-assets/logo_dark_small.png" : "/daggr-assets/logo_light_small.png"} alt="daggr" class="daggr-logo" />
 		<button class="zoom-btn" onclick={zoomOut} title="Zoom out">−</button>
 		<span class="zoom-level">{zoomPercent}%</span>
 		<button class="zoom-btn" onclick={zoomIn} title="Zoom in">+</button>
@@ -1591,27 +1588,28 @@
 			</div>
 		{/if}
 	</div>
-	<div class="user-controls-wrapper">		
+	<div class="user-controls-wrapper">
 		{#if !wsConnected}
 			<div class="status-pill info">Connecting...</div>
 		{:else if !graphData}
 			<div class="status-pill info">Loading graph...</div>
-		{/if}		
-		{#if hfUser}
+		{/if}
+		{#if hfUser && wsConnected && graphData}
 			<div class="hf-user">
 				{#if hfUser.avatar_url}
 					<img src={hfUser.avatar_url} alt="" class="hf-avatar" />
 				{/if}
 				<span class="hf-username">{hfUser.username}</span>
-				<button class="logout-btn"
-					onclick={(e) => { 
+			<button
+				class="logout-btn"
+				onclick={(e) => {
 					e.stopPropagation();
-					handleLogout(); 
+					handleLogout();
 				}}
-				title="Logout">×
-				</button>
-				<div class="hf-tooltip">
-					 Your Hugging Face token is used for all GradioNode and InferenceNode calls. This enables ZeroGPU quota tracking and access to private Spaces and gated models.
+				title="Logout"
+			>×</button>
+			<div class="hf-tooltip">
+				Your Hugging Face token is used for all GradioNode and InferenceNode calls. This enables ZeroGPU quota tracking and access to private Spaces and gated models.
 				</div>
 			</div>
 		{:else if wsConnected && graphData}
@@ -1654,12 +1652,12 @@
 			onclick={toggleTheme} 
 			title={isDark ? "Switch to light mode" : "Switch to dark mode"}
 		>
-			{#if isDark}				
-				<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
-			{:else}				
-				<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+		{#if isDark}
+			<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+		{:else}
+			<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
 			{/if}
-    	</button>
+		</button>
 	</div>
 </div>
 
@@ -1896,17 +1894,7 @@
 	}
 
 	.hf-user {
-		position: fixed;
-		top: 16px;
-		right: 16px;
-		display: flex;
-		align-items: center;
-		gap: 8px;
-		background: color-mix(in srgb, var(--block-background-fill) 90%, transparent);
-		border: 1px solid color-mix(in srgb, var(--color-accent) 20%, transparent);
-		border-radius: 8px;
-		padding: 6px 12px;
-		z-index: 100;
+		position: relative;
 		cursor: help;
 	}
 
@@ -1937,9 +1925,9 @@
 		line-height: 1.5;
 		color: var(--body-text-color-subdued);
 		white-space: normal;
-        text-overflow: clip;
-        overflow: visible;
-        text-align: left;        
+		text-overflow: clip;
+		overflow: visible;
+		text-align: left;
 		opacity: 0;
 		visibility: hidden;
 		transition: opacity 0.2s, visibility 0.2s;
@@ -1962,11 +1950,9 @@
 	}
 
 	.login-section {
-		position: fixed;
-		top: 16px;
-		right: 16px;
-		z-index: 100;
+		position: relative;
 	}
+
 	.login-btn {
 		background: color-mix(in srgb, var(--block-background-fill) 90%, transparent);
 		border: 1px solid color-mix(in srgb, var(--color-accent) 20%, transparent);
@@ -1980,18 +1966,19 @@
 		font-size: 12px;
 		transition: all 0.2s;
 	}
+
 	.logout-btn {
-        background: transparent;
-        border: none;
-        color: var(--neutral-500);
-        font-size: 18px;
-        cursor: pointer;
-        margin-left: 4px;
-        opacity: 0;
-        transition: opacity 0.2s;
+		background: transparent;
+		border: none;
+		color: var(--neutral-500);
+		font-size: 18px;
+		cursor: pointer;
+		margin-left: 4px;
+		opacity: 0;
+		transition: opacity 0.2s;
 		position: relative;
-    	z-index: 10;
-    }
+		z-index: 10;
+	}
 
 	.login-btn:hover {
 		border-color: color-mix(in srgb, var(--color-accent) 40%, transparent);
@@ -2003,6 +1990,7 @@
 		height: 18px;
 		object-fit: contain;
 	}
+
 	.login-tooltip {
 		position: absolute;
 		top: calc(100% + 8px);
@@ -2015,6 +2003,7 @@
 		width: 280px;
 		box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
 	}
+
 	.login-tooltip-header {
 		font-size: 14px;
 		font-weight: 600;
@@ -2589,6 +2578,7 @@
 		min-width: 32px;
 		text-align: center;
 	}
+
 	.user-controls-wrapper {
 		position: fixed;
 		top: 16px;
@@ -2597,55 +2587,57 @@
 		align-items: center;
 		gap: 12px;
 		z-index: 2000;
-		cursor: default; 
-		pointer-events: auto; 
+		cursor: default;
+		pointer-events: auto;
 	}
-	.status-pill, .hf-user, .login-section {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        height: 36px;
-        padding: 0 12px;
-        background: color-mix(in srgb, var(--block-background-fill) 90%, transparent);
-        border: 1px solid color-mix(in srgb, var(--color-accent) 20%, transparent);
-        border-radius: 8px;
-        backdrop-filter: blur(4px);
-        font-size: 13px;
-        color: var(--body-text-color-subdued);
-    }    
-    .status-pill.info {
-        border-color: var(--color-accent);
-        color: var(--color-accent);
-        font-weight: 600;
-    }
 
-	.hf-user, .login-section {
-        position: relative !important;
-        top: auto !important;
-        right: auto !important;
-    }
-	
+	.status-pill, .hf-user, .login-section {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		height: 36px;
+		padding: 0 12px;
+		background: color-mix(in srgb, var(--block-background-fill) 90%, transparent);
+		border: 1px solid color-mix(in srgb, var(--color-accent) 20%, transparent);
+		border-radius: 8px;
+		backdrop-filter: blur(4px);
+		font-size: 13px;
+		color: var(--body-text-color-subdued);
+	}
+
+	.status-pill.info {
+		border-color: var(--color-accent);
+		color: var(--color-accent);
+		font-weight: 600;
+	}
+
 	.theme-btn {
-        width: 36px;
-        height: 36px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        background: color-mix(in srgb, var(--block-background-fill) 90%, transparent);
-        border: 1px solid color-mix(in srgb, var(--color-accent) 20%, transparent);
-        border-radius: 8px;
-        color: var(--body-text-color-subdued);
-        cursor: pointer;
-        transition: all 0.2s;
-        backdrop-filter: blur(4px);
-    }
-	.theme-btn, .login-btn, .logout-btn {
-        cursor: pointer !important;
-    }
+		width: 36px;
+		height: 36px;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		background: color-mix(in srgb, var(--block-background-fill) 90%, transparent);
+		border: 1px solid color-mix(in srgb, var(--color-accent) 20%, transparent);
+		border-radius: 8px;
+		color: var(--body-text-color-subdued);
+		cursor: pointer;
+		transition: all 0.2s;
+		backdrop-filter: blur(4px);
+	}
+
 	.theme-btn:hover {
-        border-color: var(--color-accent);
-        color: var(--color-accent);
-        background: color-mix(in srgb, var(--color-accent) 5%, transparent);
-    }
-	
+		border-color: var(--color-accent);
+		color: var(--color-accent);
+		background: color-mix(in srgb, var(--color-accent) 5%, transparent);
+	}
+
+	.canvas:not(.dark) .zoom-btn,
+	.canvas:not(.dark) .zoom-level,
+	.canvas:not(.dark) .sheet-current,
+	.canvas:not(.dark) .sheet-action-btn,
+	.canvas:not(.dark) .title-separator {
+		color: var(--body-text-color);
+	}
+
 </style>
